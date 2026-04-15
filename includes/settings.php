@@ -748,11 +748,9 @@ function cacb_render_rag_page(): void {
                     ⚡ <?php esc_html_e( 'Index Προϊόντων', 'capitano-chatbot' ); ?>
                 </button>
                 <?php endif; ?>
-                <?php if ( '1' === $index_pages ) : ?>
                 <button type="button" id="cacb-rag-index-pages" class="button button-secondary">
                     📄 <?php esc_html_e( 'Index Σελίδων', 'capitano-chatbot' ); ?>
                 </button>
-                <?php endif; ?>
                 <button type="button" id="cacb-rag-clear" class="button cacb-btn-danger">
                     🗑 <?php esc_html_e( 'Καθαρισμός Index', 'capitano-chatbot' ); ?>
                 </button>

@@ -320,13 +320,18 @@ function cacb_index_product( int $product_id ) {
         return $embedding;
     }
 
+    $json = wp_json_encode( $embedding );
+    if ( false === $json ) {
+        return new WP_Error( 'json_encode_fail', "Failed to encode embedding for product {$product_id}." );
+    }
+
     $wpdb->replace(
         $wpdb->prefix . 'cacb_embeddings',
         [
             'object_type'  => 'product',
             'object_id'    => $product_id,
             'content_hash' => $hash,
-            'embedding'    => wp_json_encode( $embedding ),
+            'embedding'    => $json,
             'dims'         => count( $embedding ),
             'indexed_at'   => current_time( 'mysql' ),
         ],
@@ -371,13 +376,18 @@ function cacb_index_page( int $post_id ) {
         return $embedding;
     }
 
+    $json = wp_json_encode( $embedding );
+    if ( false === $json ) {
+        return new WP_Error( 'json_encode_fail', "Failed to encode embedding for page {$post_id}." );
+    }
+
     $wpdb->replace(
         $wpdb->prefix . 'cacb_embeddings',
         [
             'object_type'  => 'page',
             'object_id'    => $post_id,
             'content_hash' => $hash,
-            'embedding'    => wp_json_encode( $embedding ),
+            'embedding'    => $json,
             'dims'         => count( $embedding ),
             'indexed_at'   => current_time( 'mysql' ),
         ],
