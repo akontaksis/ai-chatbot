@@ -38,6 +38,11 @@ function cacb_register_settings() {
         'cacb_log_retention',
         'cacb_privacy_notice',
         'cacb_privacy_url',
+        // RAG / Knowledge Base
+        'cacb_rag_enabled',
+        'cacb_rag_top_k',
+        'cacb_rag_index_pages',
+        'cacb_rag_openai_key',
     ];
     foreach ( $fields as $field ) {
         register_setting( 'cacb_settings_group', $field, [
@@ -108,7 +113,7 @@ function cacb_sanitize_option( $value ) {
     $filter = current_filter();
 
     // All API key fields: encrypt on save, keep existing if left empty
-    $api_key_options = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key' ];
+    $api_key_options = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key', 'cacb_rag_openai_key' ];
     foreach ( $api_key_options as $opt ) {
         if ( strpos( $filter, $opt ) !== false ) {
             $value = sanitize_text_field( $value );
@@ -135,14 +140,22 @@ function cacb_sanitize_option( $value ) {
         return wp_kses( $value, [] );
     }
 
-    // Logging toggle — always store '1' or '0'
-    if ( strpos( $filter, 'cacb_logging_enabled' ) !== false ) {
-        return '1' === $value ? '1' : '0';
+    // Boolean toggles — always store '1' or '0'
+    $bool_options = [ 'cacb_logging_enabled', 'cacb_rag_enabled', 'cacb_rag_index_pages' ];
+    foreach ( $bool_options as $opt ) {
+        if ( strpos( $filter, $opt ) !== false ) {
+            return '1' === $value ? '1' : '0';
+        }
     }
 
     // Retention days — integer between 1 and 365
     if ( strpos( $filter, 'cacb_log_retention' ) !== false ) {
         return (string) max( 1, min( 365, (int) $value ) );
+    }
+
+    // RAG top-K — integer between 1 and 10
+    if ( strpos( $filter, 'cacb_rag_top_k' ) !== false ) {
+        return (string) max( 1, min( 10, (int) $value ) );
     }
 
     // Privacy policy URL — sanitize as URL
@@ -173,9 +186,14 @@ function cacb_admin_enqueue( string $hook ): void {
         'nonce'   => wp_create_nonce( 'cacb_admin_nonce' ),
         'ajaxUrl' => esc_url( admin_url( 'admin-ajax.php' ) ),
         'i18n'    => [
-            'testing'       => __( 'Δοκιμή…', 'capitano-chatbot' ),
-            'testBtn'       => __( 'Δοκιμή', 'capitano-chatbot' ),
-            'confirmDelete' => __( 'Διαγραφή API key; Θα χρειαστεί να το ξαναβάλεις για να λειτουργεί το chatbot.', 'capitano-chatbot' ),
+            'testing'           => __( 'Δοκιμή…', 'capitano-chatbot' ),
+            'testBtn'           => __( 'Δοκιμή', 'capitano-chatbot' ),
+            'confirmDelete'     => __( 'Διαγραφή API key; Θα χρειαστεί να το ξαναβάλεις για να λειτουργεί το chatbot.', 'capitano-chatbot' ),
+            'indexing'          => __( 'Ευρετηρίαση…', 'capitano-chatbot' ),
+            'indexDone'         => __( 'Ολοκληρώθηκε!', 'capitano-chatbot' ),
+            'indexError'        => __( 'Σφάλμα κατά την ευρετηρίαση.', 'capitano-chatbot' ),
+            'confirmClearIndex' => __( 'Διαγραφή ολόκληρου του index; Θα χρειαστεί να ξανακάνεις ευρετηρίαση.', 'capitano-chatbot' ),
+            'cleared'           => __( 'Index διαγράφηκε.', 'capitano-chatbot' ),
         ],
     ] );
 }
@@ -185,7 +203,10 @@ function cacb_settings_page() {
     if ( ! current_user_can( 'manage_options' ) ) {
         wp_die( esc_html__( 'Access denied.', 'capitano-chatbot' ) );
     }
-    $active_tab = ( isset( $_GET['tab'] ) && 'logs' === $_GET['tab'] ) ? 'logs' : 'settings';
+    $valid_tabs = [ 'settings', 'rag', 'logs' ];
+    $active_tab = ( isset( $_GET['tab'] ) && in_array( $_GET['tab'], $valid_tabs, true ) )
+        ? sanitize_key( $_GET['tab'] )
+        : 'settings';
     ?>
     <div class="wrap cacb-admin">
         <h1>🤖 <?php esc_html_e( 'AI Chatbot Settings', 'capitano-chatbot' ); ?></h1>
@@ -197,6 +218,10 @@ function cacb_settings_page() {
                class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>">
                 ⚙️ <?php esc_html_e( 'Ρυθμίσεις', 'capitano-chatbot' ); ?>
             </a>
+            <a href="<?php echo esc_url( add_query_arg( 'tab', 'rag' ) ); ?>"
+               class="nav-tab <?php echo 'rag' === $active_tab ? 'nav-tab-active' : ''; ?>">
+                🧠 <?php esc_html_e( 'Knowledge Base', 'capitano-chatbot' ); ?>
+            </a>
             <a href="<?php echo esc_url( add_query_arg( 'tab', 'logs' ) ); ?>"
                class="nav-tab <?php echo 'logs' === $active_tab ? 'nav-tab-active' : ''; ?>">
                 📋 <?php esc_html_e( 'Logs', 'capitano-chatbot' ); ?>
@@ -205,6 +230,8 @@ function cacb_settings_page() {
 
         <?php if ( 'logs' === $active_tab ) :
             cacb_render_logs_page();
+        elseif ( 'rag' === $active_tab ) :
+            cacb_render_rag_page();
         else : ?>
 
         <form method="post" action="options.php">
@@ -616,5 +643,131 @@ function cacb_settings_page() {
         }
     </style>
     <?php // Provider highlighting and key actions are handled by assets/admin.js ?>
+    <?php
+}
+
+// ── RAG / Knowledge Base page ─────────────────────────────────────────────────
+function cacb_render_rag_page(): void {
+    $provider      = get_option( 'cacb_provider', 'openai' );
+    $rag_enabled   = get_option( 'cacb_rag_enabled', '0' );
+    $top_k         = (int) get_option( 'cacb_rag_top_k', 5 );
+    $index_pages   = get_option( 'cacb_rag_index_pages', '0' );
+    $has_rag_key   = ! empty( get_option( 'cacb_rag_openai_key', '' ) );
+    ?>
+
+    <div class="cacb-grid" style="max-width:1100px">
+
+        <!-- ── RAG Settings form ── -->
+        <div class="cacb-card cacb-card--full">
+            <h2 style="margin-top:0">🧠 RAG — Semantic Search (Retrieval-Augmented Generation)</h2>
+            <p class="description">
+                <?php esc_html_e( 'Αντί να στέλνεις όλα τα προϊόντα στο AI, το σύστημα βρίσκει σημαντικά μόνο τα σχετικά με κάθε ερώτηση. Λιγότερα tokens, καλύτερες απαντήσεις, χωρίς όριο προϊόντων.', 'capitano-chatbot' ); ?>
+            </p>
+
+            <form method="post" action="options.php">
+                <?php settings_fields( 'cacb_settings_group' ); ?>
+
+                <label style="display:flex;align-items:center;gap:8px;margin-top:16px;font-weight:600">
+                    <input type="hidden"   name="cacb_rag_enabled" value="0">
+                    <input type="checkbox" name="cacb_rag_enabled" value="1"
+                           id="cacb_rag_enabled"
+                           <?php checked( $rag_enabled, '1' ); ?> />
+                    <?php esc_html_e( 'Ενεργοποίηση RAG (Semantic Search)', 'capitano-chatbot' ); ?>
+                </label>
+                <p class="description" style="margin-left:28px"><?php esc_html_e( 'Χρησιμοποιεί vector embeddings αντί για απλή λίστα προϊόντων.', 'capitano-chatbot' ); ?></p>
+
+                <div id="cacb-rag-options" <?php echo '1' === $rag_enabled ? '' : 'style="opacity:.45;pointer-events:none"'; ?>>
+
+                    <label style="display:block;font-weight:600;margin-top:16px;margin-bottom:4px">
+                        <?php esc_html_e( 'Top-K αποτελέσματα', 'capitano-chatbot' ); ?>
+                    </label>
+                    <input type="number" name="cacb_rag_top_k"
+                           value="<?php echo esc_attr( $top_k ); ?>"
+                           min="1" max="10" class="small-text" />
+                    <p class="description"><?php esc_html_e( 'Πόσα σχετικά αποτελέσματα να εισάγει στο prompt. Προτεινόμενο: 5.', 'capitano-chatbot' ); ?></p>
+
+                    <label style="display:flex;align-items:center;gap:8px;margin-top:16px;font-weight:600">
+                        <input type="hidden"   name="cacb_rag_index_pages" value="0">
+                        <input type="checkbox" name="cacb_rag_index_pages" value="1"
+                               <?php checked( $index_pages, '1' ); ?> />
+                        <?php esc_html_e( 'Ευρετηρίαση σελίδων WordPress (FAQ, Shipping, κ.λπ.)', 'capitano-chatbot' ); ?>
+                    </label>
+                    <p class="description" style="margin-left:28px"><?php esc_html_e( 'Εκτός από τα προϊόντα, το chatbot μπορεί να απαντά και με βάση το περιεχόμενο των σελίδων σου.', 'capitano-chatbot' ); ?></p>
+
+                    <?php if ( 'claude' === $provider ) : ?>
+                    <div class="cacb-notice cacb-notice--warn" style="margin-top:16px">
+                        ⚠️ <?php esc_html_e( 'Ο Claude δεν έχει Embeddings API. Χρειάζεται ένα OpenAI key αποκλειστικά για RAG (δεν χρησιμοποιείται για chat).', 'capitano-chatbot' ); ?>
+                    </div>
+
+                    <label style="display:block;font-weight:600;margin-top:12px;margin-bottom:4px">
+                        <?php esc_html_e( 'OpenAI API Key (μόνο για Embeddings)', 'capitano-chatbot' ); ?>
+                    </label>
+                    <input type="password" name="cacb_rag_openai_key" value=""
+                           class="regular-text" autocomplete="new-password"
+                           placeholder="<?php echo esc_attr( $has_rag_key ? '••••••••••••••••' : 'sk-...' ); ?>" />
+                    <p class="description">
+                        <?php if ( $has_rag_key ) : ?>
+                            ✅ <?php esc_html_e( 'Key αποθηκευμένο κρυπτογραφημένα. Άφησε κενό για να το κρατήσεις.', 'capitano-chatbot' ); ?>
+                        <?php else : ?>
+                            <?php esc_html_e( 'Αποκτά δωρεάν credits από platform.openai.com. Θα αποθηκευτεί κρυπτογραφημένο.', 'capitano-chatbot' ); ?>
+                        <?php endif; ?>
+                    </p>
+                    <?php if ( $has_rag_key ) : ?>
+                    <button type="button" class="button cacb-delete-key cacb-btn-danger"
+                            data-option="cacb_rag_openai_key" style="margin-top:6px">
+                        🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'capitano-chatbot' ); ?>
+                    </button>
+                    <?php endif; ?>
+                    <?php endif; // claude ?>
+
+                </div><!-- #cacb-rag-options -->
+
+                <?php submit_button( __( 'Αποθήκευση', 'capitano-chatbot' ) ); ?>
+            </form>
+            <script>
+            document.getElementById('cacb_rag_enabled').addEventListener('change', function () {
+                var opts = document.getElementById('cacb-rag-options');
+                opts.style.opacity      = this.checked ? '1' : '.45';
+                opts.style.pointerEvents = this.checked ? '' : 'none';
+            });
+            </script>
+        </div>
+
+        <!-- ── Index Status ── -->
+        <div class="cacb-card cacb-card--full" id="cacb-rag-status-card">
+            <h2 style="margin-top:0">📊 <?php esc_html_e( 'Κατάσταση Index', 'capitano-chatbot' ); ?></h2>
+
+            <div id="cacb-rag-status-wrap">
+                <span class="spinner is-active" style="float:none;margin:0 8px 0 0"></span>
+                <?php esc_html_e( 'Φόρτωση…', 'capitano-chatbot' ); ?>
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+                <?php if ( function_exists( 'wc_get_products' ) ) : ?>
+                <button type="button" id="cacb-rag-index-products" class="button button-primary">
+                    ⚡ <?php esc_html_e( 'Index Προϊόντων', 'capitano-chatbot' ); ?>
+                </button>
+                <?php endif; ?>
+                <?php if ( '1' === $index_pages ) : ?>
+                <button type="button" id="cacb-rag-index-pages" class="button button-secondary">
+                    📄 <?php esc_html_e( 'Index Σελίδων', 'capitano-chatbot' ); ?>
+                </button>
+                <?php endif; ?>
+                <button type="button" id="cacb-rag-clear" class="button cacb-btn-danger">
+                    🗑 <?php esc_html_e( 'Καθαρισμός Index', 'capitano-chatbot' ); ?>
+                </button>
+            </div>
+
+            <!-- Progress bar -->
+            <div id="cacb-rag-progress-wrap" style="display:none;margin-top:14px">
+                <div style="background:#e0e0e0;border-radius:4px;overflow:hidden;height:10px">
+                    <div id="cacb-rag-progress-bar"
+                         style="width:0%;background:#2271b1;height:100%;transition:width .2s"></div>
+                </div>
+                <p id="cacb-rag-progress-text" style="font-size:13px;margin-top:6px"></p>
+            </div>
+        </div>
+
+    </div><!-- .cacb-grid -->
     <?php
 }

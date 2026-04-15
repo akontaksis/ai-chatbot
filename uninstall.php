@@ -41,15 +41,21 @@ $options = [
     // Privacy
     'cacb_privacy_notice',
     'cacb_privacy_url',
+    // RAG / Knowledge Base
+    'cacb_rag_enabled',
+    'cacb_rag_top_k',
+    'cacb_rag_index_pages',
+    'cacb_rag_openai_key',
 ];
 
 foreach ( $options as $option ) {
     delete_option( $option );
 }
 
-// ── Drop the logs table ───────────────────────────────────────────────────────
+// ── Drop plugin tables ────────────────────────────────────────────────────────
 global $wpdb;
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}cacb_logs" );
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}cacb_embeddings" );
 
 // ── Delete all rate limit transients ─────────────────────────────────────────
 $wpdb->query(

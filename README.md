@@ -1,7 +1,9 @@
 # Capitano AI Chatbot — WordPress Plugin
 
+**Version 1.2.0**
+
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)**, **Anthropic (Claude)** και **Google (Gemini)**.
-Production-ready με streaming απαντήσεις, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
+Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented Generation)**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
 
 ---
 
@@ -178,6 +180,7 @@ define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 | IP (logs) | `wp_cacb_logs` | SHA-256 hash | Configurable | Admin UI ή uninstall |
 | Ιστορικό (browser) | `localStorage` | JSON plaintext | Αόριστη | Κουμπί 🗑 στο chat |
 | Μηνύματα (logs) | `wp_cacb_logs` | Plaintext | Configurable | Admin UI ή uninstall |
+| Vector Embeddings | `wp_cacb_embeddings` | JSON float array | Μόνιμη | Admin UI ή uninstall |
 | Ρυθμίσεις plugin | `wp_options` | Plaintext | Μόνιμη | Uninstall |
 
 ---
@@ -207,10 +210,13 @@ capitano-chatbot/
 ├── uninstall.php          ← Καθαρισμός βάσης κατά τη διαγραφή
 ├── includes/
 │   ├── settings.php       ← Admin page, WP options, AES-256-GCM encryption
+│   ├── embeddings.php     ← RAG engine: indexing, embeddings, cosine similarity, retrieval
 │   ├── api.php            ← REST endpoint + streaming (SSE) για OpenAI/Claude/Gemini
+│   ├── logs.php           ← DB logs, AJAX handlers, log viewer
 │   └── frontend.php       ← Asset enqueue + chat HTML output
 └── assets/
     ├── chat.js            ← UI logic, SSE streaming, localStorage history
+    ├── admin.js           ← Admin panel JS: provider highlight, key test/delete, RAG index
     └── chat.css           ← Styles, animations
 ```
 
@@ -239,6 +245,63 @@ capitano-chatbot/
 - Τα προϊόντα φορτώνονται live από το κατάστημα (όνομα, τιμή, SKU, διαθεσιμότητα, κατηγορία)
 - Αποθηκεύονται σε cache 1 ώρα — ανανεώνονται αυτόματα όταν αλλάξει προϊόν
 - Φιλτράρισμα ανά κατηγορία (slugs χωρισμένα με κόμμα)
+
+---
+
+## RAG — Knowledge Base (Semantic Search)
+
+**Settings → AI Chatbot → Knowledge Base**
+
+Αντί να στέλνεις ολόκληρο τον κατάλογο στο AI σε κάθε μήνυμα, το RAG σύστημα:
+
+1. **Indexing**: Μετατρέπει κάθε προϊόν/σελίδα σε vector embedding και το αποθηκεύει στη βάση.
+2. **Retrieval**: Για κάθε ερώτηση χρήστη, βρίσκει τα top-K πιο σχετικά αντικείμενα (cosine similarity).
+3. **Augmentation**: Εισάγει **μόνο τα σχετικά** αποτελέσματα στο system prompt.
+
+### Πλεονεκτήματα
+
+| | Χωρίς RAG | Με RAG |
+|---|---|---|
+| Tokens/request | ~3 000–8 000 | ~300–500 |
+| Max προϊόντα | ~200 | Απεριόριστα |
+| Ακρίβεια απαντήσεων | Μέτρια | Υψηλή |
+| Κόστος indexing | — | ~$0.02 / 1 000 προϊόντα |
+
+### Embedding Providers
+
+| Chat Provider | Embedding API | Key που χρησιμοποιεί |
+|---|---|---|
+| OpenAI | `text-embedding-3-small` (1 536 dims) | Ίδιο OpenAI key |
+| Gemini | `text-embedding-004` (768 dims) | Ίδιο Gemini key |
+| Claude | `text-embedding-3-small` | Ξεχωριστό OpenAI key (`cacb_rag_openai_key`) |
+
+> Ο Claude δεν παρέχει Embeddings API. Αν χρησιμοποιείς Claude για chat, χρειάζεσαι ένα επιπλέον OpenAI key αποκλειστικά για embeddings.
+
+### Ρυθμίσεις
+
+| Option | Default | Περιγραφή |
+|---|---|---|
+| `cacb_rag_enabled` | `0` | Ενεργοποίηση RAG |
+| `cacb_rag_top_k` | `5` | Πόσα σχετικά αποτελέσματα να εισάγει στο prompt |
+| `cacb_rag_index_pages` | `0` | Ευρετηρίαση WordPress pages εκτός από προϊόντα |
+| `cacb_rag_openai_key` | `''` | OpenAI key για embeddings (μόνο για Claude users) |
+
+### Fallback
+
+Αν το RAG είναι ανενεργό ή ο index είναι κενός, το σύστημα επιστρέφει αυτόματα στην παλιά μέθοδο (εισαγωγή όλων των προϊόντων στο prompt).
+
+### Αρχιτεκτονική DB
+
+```
+wp_cacb_embeddings
+├── id           — AUTO INCREMENT
+├── object_type  — 'product' | 'page'
+├── object_id    — WooCommerce product ID ή WordPress post ID
+├── content_hash — MD5 του κειμένου (αποφυγή περιττών API calls)
+├── embedding    — JSON float array (1 536 ή 768 διαστάσεις)
+├── dims         — Αριθμός διαστάσεων
+└── indexed_at   — Timestamp τελευταίας ευρετηρίασης
+```
 
 ---
 

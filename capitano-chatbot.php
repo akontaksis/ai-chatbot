@@ -3,7 +3,7 @@
  * Plugin Name: Capitano AI Chatbot
  * Plugin URI:  https://github.com/akontaksis
  * Description: AI-powered chatbot supporting OpenAI (GPT), Anthropic (Claude), and Google (Gemini). Production-ready with streaming, rate limiting, security, and full admin controls.
- * Version:     1.1.0
+ * Version:     1.2.0
  * Author:      Athanasios Kontaksis
  * License:     GPL-2.0+
  * Text Domain: capitano-chatbot
@@ -11,13 +11,14 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CACB_VERSION',     '1.1.0' );
+define( 'CACB_VERSION',     '1.2.0' );
 define( 'CACB_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'CACB_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'CACB_PLUGIN_FILE', __FILE__ );
 
 // ── Includes ──────────────────────────────────────────────────────────────────
 require_once CACB_PLUGIN_DIR . 'includes/settings.php';
+require_once CACB_PLUGIN_DIR . 'includes/embeddings.php';
 require_once CACB_PLUGIN_DIR . 'includes/api.php';
 require_once CACB_PLUGIN_DIR . 'includes/logs.php';
 require_once CACB_PLUGIN_DIR . 'includes/frontend.php';
@@ -48,6 +49,11 @@ function cacb_activate() {
         'cacb_log_retention'    => 30,
         'cacb_privacy_notice'   => 'Οι συνομιλίες ενδέχεται να καταγράφονται.',
         'cacb_privacy_url'      => '',
+        // RAG / Knowledge Base
+        'cacb_rag_enabled'      => '0',
+        'cacb_rag_top_k'        => 5,
+        'cacb_rag_index_pages'  => '0',
+        'cacb_rag_openai_key'   => '',
     ];
     foreach ( $defaults as $key => $value ) {
         if ( false === get_option( $key ) ) {
@@ -55,6 +61,7 @@ function cacb_activate() {
         }
     }
     cacb_create_logs_table();
+    cacb_create_embeddings_table();
 }
 
 // ── Deactivation ──────────────────────────────────────────────────────────────

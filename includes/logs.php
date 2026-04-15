@@ -28,6 +28,7 @@ add_action( 'admin_init', 'cacb_maybe_upgrade_db' );
 function cacb_maybe_upgrade_db(): void {
     if ( get_option( 'cacb_db_version' ) !== CACB_VERSION ) {
         cacb_create_logs_table();
+        cacb_create_embeddings_table();
         update_option( 'cacb_db_version', CACB_VERSION );
     }
 }
@@ -107,7 +108,7 @@ function cacb_ajax_delete_key(): void {
     if ( ! current_user_can( 'manage_options' ) ) wp_die();
 
     $option  = sanitize_text_field( wp_unslash( $_POST['option'] ?? '' ) );
-    $allowed = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key' ];
+    $allowed = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key', 'cacb_rag_openai_key' ];
     if ( ! in_array( $option, $allowed, true ) ) {
         wp_send_json_error( esc_html__( 'Μη έγκυρο πεδίο.', 'capitano-chatbot' ) );
         return;

@@ -225,7 +225,7 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     }
 
     $system_prompt = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
-    $system_prompt .= cacb_get_wc_product_context();
+    $system_prompt .= cacb_get_smart_context( $client_messages );
     $max_tokens = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
 
     // 5. Call the selected provider
@@ -473,7 +473,7 @@ function cacb_handle_stream(): void {
         $messages = array_slice( $messages, - $history_limit );
     }
     $system_prompt  = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
-    $system_prompt .= cacb_get_wc_product_context();
+    $system_prompt .= cacb_get_smart_context( $messages );
     $max_tokens     = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
 
     // 7. Delegate to provider
