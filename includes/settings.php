@@ -15,7 +15,8 @@ function cacb_admin_menu() {
 
 add_action( 'admin_init', 'cacb_register_settings' );
 function cacb_register_settings() {
-    $fields = [
+    // ── Main settings (Settings tab) ─────────────────────────────────────────
+    $main_fields = [
         'cacb_api_key',
         'cacb_model',
         'cacb_max_tokens',
@@ -38,14 +39,22 @@ function cacb_register_settings() {
         'cacb_log_retention',
         'cacb_privacy_notice',
         'cacb_privacy_url',
-        // RAG / Knowledge Base
+    ];
+    foreach ( $main_fields as $field ) {
+        register_setting( 'cacb_settings_group', $field, [
+            'sanitize_callback' => 'cacb_sanitize_option',
+        ] );
+    }
+
+    // ── RAG settings (Knowledge Base tab) — separate group to avoid cross-tab wipe
+    $rag_fields = [
         'cacb_rag_enabled',
         'cacb_rag_top_k',
         'cacb_rag_index_pages',
         'cacb_rag_openai_key',
     ];
-    foreach ( $fields as $field ) {
-        register_setting( 'cacb_settings_group', $field, [
+    foreach ( $rag_fields as $field ) {
+        register_setting( 'cacb_rag_group', $field, [
             'sanitize_callback' => 'cacb_sanitize_option',
         ] );
     }
@@ -469,6 +478,7 @@ function cacb_settings_page() {
                     <?php else : ?>
 
                         <label style="display:flex;align-items:center;gap:8px;margin-top:0;">
+                            <input type="hidden"   name="cacb_wc_enabled" value="0">
                             <input type="checkbox"
                                    name="cacb_wc_enabled"
                                    value="1"
@@ -665,7 +675,7 @@ function cacb_render_rag_page(): void {
             </p>
 
             <form method="post" action="options.php">
-                <?php settings_fields( 'cacb_settings_group' ); ?>
+                <?php settings_fields( 'cacb_rag_group' ); ?>
 
                 <label style="display:flex;align-items:center;gap:8px;margin-top:16px;font-weight:600">
                     <input type="hidden"   name="cacb_rag_enabled" value="0">

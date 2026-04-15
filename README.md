@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.2.0**
+**Version 1.2.1**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)**, **Anthropic (Claude)** και **Google (Gemini)**.
 Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented Generation)**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
@@ -302,6 +302,46 @@ wp_cacb_embeddings
 ├── dims         — Αριθμός διαστάσεων
 └── indexed_at   — Timestamp τελευταίας ευρετηρίασης
 ```
+
+---
+
+## Changelog
+
+### v1.2.1 — Bug fixes
+
+**Settings save bug** (`includes/settings.php`)
+- Τα RAG settings και τα κύρια settings χρησιμοποιούσαν το ίδιο `cacb_settings_group`. Αποθηκεύοντας από το ένα tab αντικαθιστούσε τα settings του άλλου. Διορθώθηκε με ξεχωριστό `cacb_rag_group` για το Knowledge Base tab.
+- Το checkbox `cacb_wc_enabled` δεν είχε hidden field, οπότε δεν μπορούσε να αποενεργοποιηθεί μέσω της φόρμας.
+
+**Elementor page indexing** (`includes/embeddings.php`)
+- Οι σελίδες φτιαγμένες με Elementor αποθηκεύουν το κείμενό τους στο `_elementor_data` meta (JSON), όχι στο `post_content`. Προστέθηκε η `cacb_extract_page_text()` που ανιχνεύει Elementor σελίδες και εξάγει κείμενο από τα widgets (heading, text editor, description, κλπ.).
+
+**Index progress error visibility** (`assets/admin.js`)
+- Το `runBatchIndex()` έδειχνε πάντα ✅ μετά το τέλος, ακόμα και αν όλα τα items απέτυχαν (π.χ. λάθος API key). Τώρα παρακολουθεί `totalIndexed` και `totalErrors` σε όλα τα batches και εμφανίζει το πραγματικό μήνυμα σφάλματος όταν τίποτα δεν έγινε indexed.
+
+---
+
+### v1.2.0 — RAG / Knowledge Base
+
+- Πλήρης υλοποίηση RAG (Retrieval-Augmented Generation) με vector embeddings
+- Υποστήριξη OpenAI `text-embedding-3-small` (1 536 dims) και Gemini `text-embedding-004` (768 dims)
+- Νέος πίνακας `wp_cacb_embeddings` στη βάση δεδομένων
+- Admin tab "Knowledge Base": status, batch indexing, progress bar, clear index
+- Cosine similarity σε pure PHP — fallback στην παλιά μέθοδο αν RAG ανενεργό ή index κενός
+- Content hash deduplication — αποφυγή περιττών embedding API calls
+- WP-Cron async auto-reindex κατά αποθήκευση προϊόντος/σελίδας
+- White-label rebrand: `Capitano AI Chatbot` → `Smart AI Chatbot`
+
+---
+
+### v1.1.0 — Initial release
+
+- OpenAI GPT, Anthropic Claude, Google Gemini support
+- Streaming (SSE) απαντήσεις
+- AES-256-GCM κρυπτογράφηση API keys
+- Rate limiting, history limit, logging
+- WooCommerce product context integration
+- Privacy notice, bubble position, color customization
 
 ---
 

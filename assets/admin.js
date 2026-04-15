@@ -111,7 +111,11 @@
     }
 
     // ── RAG: batch index helper ───────────────────────────────────────────────
-    function runBatchIndex( type, offset ) {
+    function runBatchIndex( type, offset, totalIndexed, totalErrors, firstError ) {
+        totalIndexed = totalIndexed || 0;
+        totalErrors  = totalErrors  || 0;
+        firstError   = firstError   || '';
+
         var $bar      = $( '#cacb-rag-progress-bar' );
         var $text     = $( '#cacb-rag-progress-text' );
         var $wrap     = $( '#cacb-rag-progress-wrap' );
@@ -131,32 +135,52 @@
             offset      : offset
         }, function ( res ) {
             if ( ! res.success ) {
-                $text.html( '<span style="color:#d63638">❌ ' + i18n.indexError + '</span>' );
+                $text.html( '<span style="color:#d63638">❌ ' + esc( ( res.data && res.data.message ) || i18n.indexError ) + '</span>' );
                 $btnP.prop( 'disabled', false );
                 $btnPg.prop( 'disabled', false );
                 $btnClear.prop( 'disabled', false );
                 return;
             }
 
-            var d    = res.data;
-            var pct  = d.total > 0 ? Math.round( ( d.offset / d.total ) * 100 ) : 100;
-            pct      = Math.min( 100, pct );
+            var d = res.data;
+
+            // Accumulate counts across batches
+            totalIndexed += ( d.indexed || 0 );
+            if ( d.errors && d.errors.length ) {
+                totalErrors += d.errors.length;
+                if ( ! firstError ) {
+                    firstError = d.errors[0];
+                }
+            }
+
+            var pct = d.total > 0 ? Math.round( ( ( offset + ( d.indexed || 0 ) ) / d.total ) * 100 ) : 100;
+            pct     = Math.min( 99, pct ); // keep at 99% until truly done
             $bar.css( 'width', pct + '%' );
             $text.text( i18n.indexing + ' ' + Math.min( d.offset, d.total ) + ' / ' + d.total );
 
-            if ( d.errors && d.errors.length ) {
-                $text.append( ' — <span style="color:#d63638">Σφάλματα: ' + esc( d.errors.join( ', ' ) ) + '</span>' );
-            }
-
             if ( d.done ) {
                 $bar.css( 'width', '100%' );
-                $text.html( '<span style="color:#1e6637">✅ ' + i18n.indexDone + ' (' + d.offset + ' αντικείμενα)</span>' );
+
+                if ( totalIndexed === 0 && totalErrors > 0 ) {
+                    // Nothing succeeded — surface the real error instead of ✅
+                    var errMsg = firstError || i18n.indexError;
+                    $text.html( '<span style="color:#d63638">❌ ' + esc( errMsg ) + '</span>' );
+                } else if ( totalErrors > 0 ) {
+                    // Partial success
+                    $text.html(
+                        '<span style="color:#1e6637">✅ ' + i18n.indexDone + ' (' + totalIndexed + ' αντικείμενα)</span>'
+                        + ' <span style="color:#d63638">— ' + totalErrors + ' σφάλματα</span>'
+                    );
+                } else {
+                    $text.html( '<span style="color:#1e6637">✅ ' + i18n.indexDone + ' (' + totalIndexed + ' αντικείμενα)</span>' );
+                }
+
                 $btnP.prop( 'disabled', false );
                 $btnPg.prop( 'disabled', false );
                 $btnClear.prop( 'disabled', false );
                 loadRagStatus();
             } else {
-                runBatchIndex( type, d.offset );
+                runBatchIndex( type, d.offset, totalIndexed, totalErrors, firstError );
             }
         } ).fail( function () {
             $text.html( '<span style="color:#d63638">❌ Network error</span>' );

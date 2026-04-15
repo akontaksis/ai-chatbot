@@ -342,6 +342,45 @@ function cacb_index_product( int $product_id ) {
 }
 
 /**
+ * Extracts plain text from a page, with special handling for Elementor pages.
+ * Elementor stores content in _elementor_data (JSON) — post_content is empty.
+ *
+ * @param  int     $post_id
+ * @param  WP_Post $post
+ * @return string
+ */
+function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
+    // Elementor: parse _elementor_data JSON and collect text widgets
+    if ( 'builder' === get_post_meta( $post_id, '_elementor_edit_mode', true ) ) {
+        $raw = get_post_meta( $post_id, '_elementor_data', true );
+        if ( $raw ) {
+            $data = json_decode( $raw, true );
+            if ( is_array( $data ) ) {
+                $texts = [];
+                // Recursively extract human-readable text fields from widget settings
+                array_walk_recursive( $data, function ( $value, $key ) use ( &$texts ) {
+                    if ( ! is_string( $value ) || strlen( trim( $value ) ) < 5 ) return;
+                    $text_keys = [ 'title', 'description', 'text', 'editor', 'content',
+                                   'html', 'caption', 'button_text', 'heading', 'sub_title' ];
+                    if ( in_array( $key, $text_keys, true ) ) {
+                        $clean = wp_strip_all_tags( $value );
+                        if ( strlen( trim( $clean ) ) > 4 ) {
+                            $texts[] = trim( $clean );
+                        }
+                    }
+                } );
+                if ( ! empty( $texts ) ) {
+                    return implode( "\n", array_unique( $texts ) );
+                }
+            }
+        }
+    }
+
+    // Default: standard post_content (Gutenberg, Classic Editor, etc.)
+    return wp_strip_all_tags( $post->post_content );
+}
+
+/**
  * Indexes (or re-indexes) a single WordPress page.
  *
  * @param  int $post_id
@@ -356,7 +395,7 @@ function cacb_index_page( int $post_id ) {
     }
 
     $title   = get_the_title( $post_id );
-    $content = wp_strip_all_tags( $post->post_content );
+    $content = cacb_extract_page_text( $post_id, $post );
     // Limit content to ~4 000 chars (~1 000 tokens) to stay within limits
     $text    = $title . "\n\n" . mb_substr( $content, 0, 4000 );
     $hash    = md5( $text );
@@ -514,7 +553,7 @@ function cacb_rag_build_context( string $query ): string {
             if ( ! $post ) {
                 continue;
             }
-            $excerpt = wp_trim_words( wp_strip_all_tags( $post->post_content ), 60, '...' );
+            $excerpt = wp_trim_words( cacb_extract_page_text( $item['id'], $post ), 60, '...' );
             $lines[] = '📄 ' . get_the_title( $item['id'] ) . ': ' . $excerpt;
         }
     }
