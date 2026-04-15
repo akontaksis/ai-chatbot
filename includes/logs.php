@@ -355,9 +355,9 @@ function cacb_render_logs_page(): void {
                     <?php if ( $debug_on ) : ?>
                     <td style="vertical-align:top;font-size:12px">
                         <?php if ( ! empty( $log->rag_context ) ) : ?>
-                            <span style="color:#1e6637">✅ Context</span><br>
-                            <a href="#" class="cacb-expand" data-full="<?php echo esc_attr( $log->rag_context ); ?>"
-                               style="font-size:11px">[εμφάνιση]</a>
+                            <span style="color:#1e6637">✅ Context</span>
+                            <a href="#" class="cacb-rag-toggle" style="font-size:11px;display:block;margin-top:2px">[εμφάνιση]</a>
+                            <pre class="cacb-rag-pre" style="display:none;font-size:11px;white-space:pre-wrap;background:#f6f7f7;padding:8px;border-radius:4px;max-height:280px;overflow:auto;margin:4px 0 0;border:1px solid #e0e0e0"><?php echo esc_html( $log->rag_context ); ?></pre>
                         <?php else : ?>
                             <span style="color:#aaa;font-size:11px">— κανένα</span>
                         <?php endif; ?>
@@ -418,12 +418,23 @@ function cacb_render_logs_page(): void {
     </style>
     <script>
     ( function () {
-        // Expand truncated cells
+        // Expand truncated cells (user_msg / bot_reply)
         document.querySelectorAll( '.cacb-expand' ).forEach( function ( a ) {
             a.addEventListener( 'click', function ( e ) {
                 e.preventDefault();
                 this.previousElementSibling.textContent = this.dataset.full;
                 this.remove();
+            } );
+        } );
+
+        // Toggle RAG context pre block
+        document.querySelectorAll( '.cacb-rag-toggle' ).forEach( function ( a ) {
+            a.addEventListener( 'click', function ( e ) {
+                e.preventDefault();
+                var pre = this.nextElementSibling;
+                var visible = pre.style.display !== 'none';
+                pre.style.display = visible ? 'none' : 'block';
+                this.textContent  = visible ? '[εμφάνιση]' : '[απόκρυψη]';
             } );
         } );
 
