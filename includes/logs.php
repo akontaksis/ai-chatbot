@@ -110,7 +110,7 @@ function cacb_ajax_delete_key(): void {
     $option  = sanitize_text_field( wp_unslash( $_POST['option'] ?? '' ) );
     $allowed = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key', 'cacb_rag_openai_key' ];
     if ( ! in_array( $option, $allowed, true ) ) {
-        wp_send_json_error( esc_html__( 'Μη έγκυρο πεδίο.', 'capitano-chatbot' ) );
+        wp_send_json_error( esc_html__( 'Μη έγκυρο πεδίο.', 'smart-ai-chatbot' ) );
         return;
     }
 
@@ -148,7 +148,7 @@ function cacb_do_key_test( string $provider ) {
             $key   = cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
             $model = sanitize_text_field( get_option( 'cacb_model', 'gpt-4o-mini' ) );
             if ( empty( $key ) ) {
-                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'capitano-chatbot' ) );
+                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'smart-ai-chatbot' ) );
             }
             $res = wp_remote_post( 'https://api.openai.com/v1/chat/completions', [
                 'headers' => [
@@ -171,7 +171,7 @@ function cacb_do_key_test( string $provider ) {
             $key   = cacb_decrypt_key( get_option( 'cacb_claude_api_key', '' ) );
             $model = sanitize_text_field( get_option( 'cacb_claude_model', 'claude-sonnet-4-6' ) );
             if ( empty( $key ) ) {
-                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'capitano-chatbot' ) );
+                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'smart-ai-chatbot' ) );
             }
             $res = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
                 'headers' => [
@@ -195,7 +195,7 @@ function cacb_do_key_test( string $provider ) {
             $key   = cacb_decrypt_key( get_option( 'cacb_gemini_api_key', '' ) );
             $model = sanitize_text_field( get_option( 'cacb_gemini_model', 'gemini-2.0-flash' ) );
             if ( empty( $key ) ) {
-                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'capitano-chatbot' ) );
+                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'smart-ai-chatbot' ) );
             }
             $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
                 . rawurlencode( $model ) . ':generateContent?key=' . rawurlencode( $key );
@@ -213,7 +213,7 @@ function cacb_do_key_test( string $provider ) {
             return new WP_Error( 'api', $body['error']['message'] ?? ( 'HTTP ' . wp_remote_retrieve_response_code( $res ) ) );
 
         default:
-            return new WP_Error( 'invalid', __( 'Άγνωστος provider.', 'capitano-chatbot' ) );
+            return new WP_Error( 'invalid', __( 'Άγνωστος provider.', 'smart-ai-chatbot' ) );
     }
 }
 
@@ -255,18 +255,18 @@ function cacb_render_logs_page(): void {
         <div class="cacb-logs-toolbar">
             <span>
                 <strong><?php echo number_format_i18n( $total ); ?></strong>
-                <?php esc_html_e( 'εγγραφές', 'capitano-chatbot' ); ?>
+                <?php esc_html_e( 'εγγραφές', 'smart-ai-chatbot' ); ?>
                 &nbsp;·&nbsp;
-                <?php esc_html_e( 'Retention', 'capitano-chatbot' ); ?>:
+                <?php esc_html_e( 'Retention', 'smart-ai-chatbot' ); ?>:
                 <strong><?php echo (int) get_option( 'cacb_log_retention', 30 ); ?></strong>
-                <?php esc_html_e( 'ημέρες', 'capitano-chatbot' ); ?>
+                <?php esc_html_e( 'ημέρες', 'smart-ai-chatbot' ); ?>
             </span>
             <span class="cacb-logs-actions">
                 <form method="get" style="display:inline-flex;gap:6px;align-items:center">
-                    <input type="hidden" name="page" value="capitano-chatbot">
+                    <input type="hidden" name="page" value="smart-ai-chatbot">
                     <input type="hidden" name="tab"  value="logs">
                     <select name="cacb_provider" onchange="this.form.submit()">
-                        <option value=""><?php esc_html_e( '— Όλοι οι Providers —', 'capitano-chatbot' ); ?></option>
+                        <option value=""><?php esc_html_e( '— Όλοι οι Providers —', 'smart-ai-chatbot' ); ?></option>
                         <?php foreach ( [ 'openai', 'claude', 'gemini' ] as $p ) : ?>
                             <option value="<?php echo esc_attr( $p ); ?>" <?php selected( $pf, $p ); ?>>
                                 <?php echo esc_html( ucfirst( $p ) ); ?>
@@ -276,25 +276,25 @@ function cacb_render_logs_page(): void {
                 </form>
                 <button type="button" class="button button-secondary" id="cacb-clear-logs"
                         data-nonce="<?php echo esc_attr( $nonce ); ?>">
-                    🗑 <?php esc_html_e( 'Διαγραφή όλων', 'capitano-chatbot' ); ?>
+                    🗑 <?php esc_html_e( 'Διαγραφή όλων', 'smart-ai-chatbot' ); ?>
                 </button>
             </span>
         </div>
 
         <?php if ( empty( $logs ) ) : ?>
             <div class="cacb-notice cacb-notice--info" style="margin-top:12px">
-                ℹ️ <?php esc_html_e( 'Δεν υπάρχουν εγγραφές ακόμα. Οι συνομιλίες καταγράφονται αυτόματα μετά από κάθε απάντηση.', 'capitano-chatbot' ); ?>
+                ℹ️ <?php esc_html_e( 'Δεν υπάρχουν εγγραφές ακόμα. Οι συνομιλίες καταγράφονται αυτόματα μετά από κάθε απάντηση.', 'smart-ai-chatbot' ); ?>
             </div>
         <?php else : ?>
 
         <table class="widefat striped cacb-log-table">
             <thead>
                 <tr>
-                    <th style="width:110px"><?php esc_html_e( 'Ημερομηνία', 'capitano-chatbot' ); ?></th>
-                    <th style="width:130px"><?php esc_html_e( 'Provider / Model', 'capitano-chatbot' ); ?></th>
-                    <th><?php esc_html_e( 'Ερώτηση χρήστη', 'capitano-chatbot' ); ?></th>
-                    <th><?php esc_html_e( 'Απάντηση AI', 'capitano-chatbot' ); ?></th>
-                    <th style="width:90px"><?php esc_html_e( 'IP hash', 'capitano-chatbot' ); ?></th>
+                    <th style="width:110px"><?php esc_html_e( 'Ημερομηνία', 'smart-ai-chatbot' ); ?></th>
+                    <th style="width:130px"><?php esc_html_e( 'Provider / Model', 'smart-ai-chatbot' ); ?></th>
+                    <th><?php esc_html_e( 'Ερώτηση χρήστη', 'smart-ai-chatbot' ); ?></th>
+                    <th><?php esc_html_e( 'Απάντηση AI', 'smart-ai-chatbot' ); ?></th>
+                    <th style="width:90px"><?php esc_html_e( 'IP hash', 'smart-ai-chatbot' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -321,7 +321,7 @@ function cacb_render_logs_page(): void {
                         <span class="cacb-cell-text"><?php echo esc_html( $u_short ); ?><?php echo $u_long ? '…' : ''; ?></span>
                         <?php if ( $u_long ) : ?>
                             <a href="#" class="cacb-expand" data-full="<?php echo esc_attr( $log->user_msg ); ?>">
-                                <?php esc_html_e( '[περισσότερα]', 'capitano-chatbot' ); ?>
+                                <?php esc_html_e( '[περισσότερα]', 'smart-ai-chatbot' ); ?>
                             </a>
                         <?php endif; ?>
                     </td>
@@ -329,7 +329,7 @@ function cacb_render_logs_page(): void {
                         <span class="cacb-cell-text"><?php echo esc_html( $b_short ); ?><?php echo $b_long ? '…' : ''; ?></span>
                         <?php if ( $b_long ) : ?>
                             <a href="#" class="cacb-expand" data-full="<?php echo esc_attr( $log->bot_reply ); ?>">
-                                <?php esc_html_e( '[περισσότερα]', 'capitano-chatbot' ); ?>
+                                <?php esc_html_e( '[περισσότερα]', 'smart-ai-chatbot' ); ?>
                             </a>
                         <?php endif; ?>
                     </td>
@@ -343,7 +343,7 @@ function cacb_render_logs_page(): void {
 
         <?php if ( $pages > 1 ) :
             $base = add_query_arg( [
-                'page'          => 'capitano-chatbot',
+                'page'          => 'smart-ai-chatbot',
                 'tab'           => 'logs',
                 'cacb_provider' => $pf,
             ], admin_url( 'options-general.php' ) );
@@ -401,7 +401,7 @@ function cacb_render_logs_page(): void {
         var clearBtn = document.getElementById( 'cacb-clear-logs' );
         if ( clearBtn ) {
             clearBtn.addEventListener( 'click', function () {
-                if ( ! confirm( '<?php echo esc_js( __( 'Διαγραφή ΟΛΩΝ των logs; Δεν αναιρείται.', 'capitano-chatbot' ) ); ?>' ) ) return;
+                if ( ! confirm( '<?php echo esc_js( __( 'Διαγραφή ΟΛΩΝ των logs; Δεν αναιρείται.', 'smart-ai-chatbot' ) ); ?>' ) ) return;
                 clearBtn.disabled = true;
                 jQuery.post( ajaxurl, { action: 'cacb_clear_logs', nonce: clearBtn.dataset.nonce }, function ( res ) {
                     if ( res.success ) { location.reload(); }

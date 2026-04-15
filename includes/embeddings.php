@@ -102,7 +102,7 @@ function cacb_generate_embedding( string $text ) {
     $key      = cacb_get_embedding_key();
 
     if ( 'none' === $provider || empty( $key ) ) {
-        return new WP_Error( 'no_embed_key', __( 'Δεν υπάρχει διαθέσιμο embedding API key.', 'capitano-chatbot' ) );
+        return new WP_Error( 'no_embed_key', __( 'Δεν υπάρχει διαθέσιμο embedding API key.', 'smart-ai-chatbot' ) );
     }
 
     // Truncate to stay within API token limits (~8 000 tokens ≈ 32 000 chars)

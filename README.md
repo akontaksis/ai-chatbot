@@ -1,4 +1,4 @@
-# Capitano AI Chatbot — WordPress Plugin
+# Smart AI Chatbot — WordPress Plugin
 
 **Version 1.2.0**
 
@@ -9,7 +9,7 @@ Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented
 
 ## Εγκατάσταση
 
-1. Ανέβασε τον φάκελο `capitano-chatbot` στο `/wp-content/plugins/`
+1. Ανέβασε τον φάκελο `smart-ai-chatbot` στο `/wp-content/plugins/`
 2. Ενεργοποίησε το plugin από **WP Admin → Plugins**
 3. Πήγαινε στο **Settings → AI Chatbot** και:
    - Επίλεξε τον AI Provider (OpenAI / Claude / Gemini)
@@ -205,8 +205,8 @@ define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 ## Αρχιτεκτονική
 
 ```
-capitano-chatbot/
-├── capitano-chatbot.php   ← Bootstrap, activation, constants
+smart-ai-chatbot/
+├── smart-ai-chatbot.php   ← Bootstrap, activation, constants
 ├── uninstall.php          ← Καθαρισμός βάσης κατά τη διαγραφή
 ├── includes/
 │   ├── settings.php       ← Admin page, WP options, AES-256-GCM encryption

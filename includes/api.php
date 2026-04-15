@@ -175,14 +175,14 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     // 1. Verify nonce (CSRF protection)
     $nonce = sanitize_text_field( $request->get_param( 'nonce' ) );
     if ( ! wp_verify_nonce( $nonce, 'cacb_chat_nonce' ) ) {
-        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'capitano-chatbot' ), [ 'status' => 403 ] );
+        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'smart-ai-chatbot' ), [ 'status' => 403 ] );
     }
 
     // 2. Rate limit check
     if ( ! cacb_check_rate_limit() ) {
         return new WP_Error(
             'rate_limit',
-            __( 'Έχετε φτάσει το όριο μηνυμάτων. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ),
+            __( 'Έχετε φτάσει το όριο μηνυμάτων. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ),
             [ 'status' => 429 ]
         );
     }
@@ -213,7 +213,7 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     }
 
     if ( empty( $api_key ) ) {
-        return new WP_Error( 'no_api_key', __( 'API key not configured.', 'capitano-chatbot' ), [ 'status' => 500 ] );
+        return new WP_Error( 'no_api_key', __( 'API key not configured.', 'smart-ai-chatbot' ), [ 'status' => 500 ] );
     }
 
     // 4. Build messages
@@ -282,7 +282,7 @@ function cacb_call_openai( array $messages, string $api_key, string $model, int 
 
     if ( is_wp_error( $response ) ) {
         error_log( '[CACB] OpenAI connection error: ' . $response->get_error_message() );
-        return new WP_Error( 'openai_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'openai_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
     $http_code = wp_remote_retrieve_response_code( $response );
@@ -291,12 +291,12 @@ function cacb_call_openai( array $messages, string $api_key, string $model, int 
     if ( $http_code !== 200 ) {
         $err = $body['error']['message'] ?? 'Unknown OpenAI error';
         error_log( "[CACB] OpenAI API error {$http_code}: {$err}" );
-        return new WP_Error( 'openai_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'openai_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
     $reply = $body['choices'][0]['message']['content'] ?? '';
     if ( empty( $reply ) ) {
-        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
     return $reply;
 }
@@ -324,7 +324,7 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
 
     if ( is_wp_error( $response ) ) {
         error_log( '[CACB] Claude connection error: ' . $response->get_error_message() );
-        return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
     $http_code = wp_remote_retrieve_response_code( $response );
@@ -333,12 +333,12 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
     if ( $http_code !== 200 ) {
         $err = $body['error']['message'] ?? 'Unknown Claude error';
         error_log( "[CACB] Claude API error {$http_code}: {$err}" );
-        return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
     $reply = $body['content'][0]['text'] ?? '';
     if ( empty( $reply ) ) {
-        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
     return $reply;
 }
@@ -382,7 +382,7 @@ function cacb_call_gemini( array $client_messages, string $api_key, string $mode
 
     if ( is_wp_error( $response ) ) {
         error_log( '[CACB] Gemini connection error: ' . $response->get_error_message() );
-        return new WP_Error( 'gemini_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'gemini_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
     $http_code = wp_remote_retrieve_response_code( $response );
@@ -391,12 +391,12 @@ function cacb_call_gemini( array $client_messages, string $api_key, string $mode
     if ( $http_code !== 200 ) {
         $err = $body['error']['message'] ?? 'Unknown Gemini error';
         error_log( "[CACB] Gemini API error {$http_code}: {$err}" );
-        return new WP_Error( 'gemini_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'gemini_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
     $reply = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
     if ( empty( $reply ) ) {
-        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'capitano-chatbot' ), [ 'status' => 502 ] );
+        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
     return $reply;
 }
@@ -421,13 +421,13 @@ function cacb_handle_stream(): void {
     // 2. Nonce
     $nonce = sanitize_text_field( wp_unslash( $_POST['nonce'] ?? '' ) );
     if ( ! wp_verify_nonce( $nonce, 'cacb_chat_nonce' ) ) {
-        cacb_sse_error( __( 'Security check failed.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'Security check failed.', 'smart-ai-chatbot' ) );
         wp_die();
     }
 
     // 3. Rate limit
     if ( ! cacb_check_rate_limit() ) {
-        cacb_sse_error( __( 'Έχετε φτάσει το όριο μηνυμάτων. Παρακαλώ δοκιμάστε αργότερα.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'Έχετε φτάσει το όριο μηνυμάτων. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ) );
         wp_die();
     }
 
@@ -435,7 +435,7 @@ function cacb_handle_stream(): void {
     $raw      = json_decode( wp_unslash( $_POST['messages'] ?? '[]' ), true );
     $messages = cacb_sanitize_messages( is_array( $raw ) ? $raw : [] );
     if ( empty( $messages ) ) {
-        cacb_sse_error( __( 'No messages provided.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'No messages provided.', 'smart-ai-chatbot' ) );
         wp_die();
     }
 
@@ -463,7 +463,7 @@ function cacb_handle_stream(): void {
     }
 
     if ( empty( $api_key ) ) {
-        cacb_sse_error( __( 'API key not configured.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'API key not configured.', 'smart-ai-chatbot' ) );
         wp_die();
     }
 
@@ -518,7 +518,7 @@ function cacb_sse_error( string $msg ): void {
 // ── Streaming: OpenAI ─────────────────────────────────────────────────────────
 function cacb_stream_openai( array $messages, string $api_key, string $model, int $max_tokens ): void {
     if ( ! function_exists( 'curl_init' ) ) {
-        cacb_sse_error( __( 'cURL extension not available on this server.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'cURL extension not available on this server.', 'smart-ai-chatbot' ) );
         return;
     }
 
@@ -564,7 +564,7 @@ function cacb_stream_openai( array $messages, string $api_key, string $model, in
 // ── Streaming: Anthropic Claude ───────────────────────────────────────────────
 function cacb_stream_claude( array $messages, string $api_key, string $model, int $max_tokens, string $system_prompt ): void {
     if ( ! function_exists( 'curl_init' ) ) {
-        cacb_sse_error( __( 'cURL extension not available on this server.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'cURL extension not available on this server.', 'smart-ai-chatbot' ) );
         return;
     }
 
@@ -615,7 +615,7 @@ function cacb_stream_claude( array $messages, string $api_key, string $model, in
 // ── Streaming: Google Gemini ──────────────────────────────────────────────────
 function cacb_stream_gemini( array $messages, string $api_key, string $model, int $max_tokens, string $system_prompt ): void {
     if ( ! function_exists( 'curl_init' ) ) {
-        cacb_sse_error( __( 'cURL extension not available on this server.', 'capitano-chatbot' ) );
+        cacb_sse_error( __( 'cURL extension not available on this server.', 'smart-ai-chatbot' ) );
         return;
     }
 

@@ -5,10 +5,10 @@ defined( 'ABSPATH' ) || exit;
 add_action( 'admin_menu', 'cacb_admin_menu' );
 function cacb_admin_menu() {
     add_options_page(
-        __( 'AI Chatbot Settings', 'capitano-chatbot' ),
-        __( 'AI Chatbot', 'capitano-chatbot' ),
+        __( 'AI Chatbot Settings', 'smart-ai-chatbot' ),
+        __( 'AI Chatbot', 'smart-ai-chatbot' ),
         'manage_options',
-        'capitano-chatbot',
+        'smart-ai-chatbot',
         'cacb_settings_page'
     );
 }
@@ -126,7 +126,7 @@ function cacb_sanitize_option( $value ) {
                 add_settings_error(
                     $opt,
                     'cacb_encrypt_fail',
-                    __( 'API key δεν μπόρεσε να κρυπτογραφηθεί. Βεβαιωθείτε ότι η PHP έχει ενεργοποιημένη την openssl extension.', 'capitano-chatbot' )
+                    __( 'API key δεν μπόρεσε να κρυπτογραφηθεί. Βεβαιωθείτε ότι η PHP έχει ενεργοποιημένη την openssl extension.', 'smart-ai-chatbot' )
                 );
                 return get_option( $opt, '' );
             }
@@ -174,7 +174,7 @@ function cacb_get( $key, $fallback = '' ) {
 // ── Enqueue admin assets on plugin settings page only ─────────────────────────
 add_action( 'admin_enqueue_scripts', 'cacb_admin_enqueue' );
 function cacb_admin_enqueue( string $hook ): void {
-    if ( 'settings_page_capitano-chatbot' !== $hook ) return;
+    if ( 'settings_page_smart-ai-chatbot' !== $hook ) return;
     wp_enqueue_script(
         'cacb-admin',
         CACB_PLUGIN_URL . 'assets/admin.js',
@@ -186,14 +186,14 @@ function cacb_admin_enqueue( string $hook ): void {
         'nonce'   => wp_create_nonce( 'cacb_admin_nonce' ),
         'ajaxUrl' => esc_url( admin_url( 'admin-ajax.php' ) ),
         'i18n'    => [
-            'testing'           => __( 'Δοκιμή…', 'capitano-chatbot' ),
-            'testBtn'           => __( 'Δοκιμή', 'capitano-chatbot' ),
-            'confirmDelete'     => __( 'Διαγραφή API key; Θα χρειαστεί να το ξαναβάλεις για να λειτουργεί το chatbot.', 'capitano-chatbot' ),
-            'indexing'          => __( 'Ευρετηρίαση…', 'capitano-chatbot' ),
-            'indexDone'         => __( 'Ολοκληρώθηκε!', 'capitano-chatbot' ),
-            'indexError'        => __( 'Σφάλμα κατά την ευρετηρίαση.', 'capitano-chatbot' ),
-            'confirmClearIndex' => __( 'Διαγραφή ολόκληρου του index; Θα χρειαστεί να ξανακάνεις ευρετηρίαση.', 'capitano-chatbot' ),
-            'cleared'           => __( 'Index διαγράφηκε.', 'capitano-chatbot' ),
+            'testing'           => __( 'Δοκιμή…', 'smart-ai-chatbot' ),
+            'testBtn'           => __( 'Δοκιμή', 'smart-ai-chatbot' ),
+            'confirmDelete'     => __( 'Διαγραφή API key; Θα χρειαστεί να το ξαναβάλεις για να λειτουργεί το chatbot.', 'smart-ai-chatbot' ),
+            'indexing'          => __( 'Ευρετηρίαση…', 'smart-ai-chatbot' ),
+            'indexDone'         => __( 'Ολοκληρώθηκε!', 'smart-ai-chatbot' ),
+            'indexError'        => __( 'Σφάλμα κατά την ευρετηρίαση.', 'smart-ai-chatbot' ),
+            'confirmClearIndex' => __( 'Διαγραφή ολόκληρου του index; Θα χρειαστεί να ξανακάνεις ευρετηρίαση.', 'smart-ai-chatbot' ),
+            'cleared'           => __( 'Index διαγράφηκε.', 'smart-ai-chatbot' ),
         ],
     ] );
 }
@@ -201,7 +201,7 @@ function cacb_admin_enqueue( string $hook ): void {
 // ── Settings page HTML ────────────────────────────────────────────────────────
 function cacb_settings_page() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'Access denied.', 'capitano-chatbot' ) );
+        wp_die( esc_html__( 'Access denied.', 'smart-ai-chatbot' ) );
     }
     $valid_tabs = [ 'settings', 'rag', 'logs' ];
     $active_tab = ( isset( $_GET['tab'] ) && in_array( $_GET['tab'], $valid_tabs, true ) )
@@ -209,22 +209,22 @@ function cacb_settings_page() {
         : 'settings';
     ?>
     <div class="wrap cacb-admin">
-        <h1>🤖 <?php esc_html_e( 'AI Chatbot Settings', 'capitano-chatbot' ); ?></h1>
+        <h1>🤖 <?php esc_html_e( 'AI Chatbot Settings', 'smart-ai-chatbot' ); ?></h1>
 
         <?php settings_errors(); ?>
 
         <nav class="nav-tab-wrapper" style="margin-bottom:20px">
             <a href="<?php echo esc_url( add_query_arg( 'tab', 'settings' ) ); ?>"
                class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>">
-                ⚙️ <?php esc_html_e( 'Ρυθμίσεις', 'capitano-chatbot' ); ?>
+                ⚙️ <?php esc_html_e( 'Ρυθμίσεις', 'smart-ai-chatbot' ); ?>
             </a>
             <a href="<?php echo esc_url( add_query_arg( 'tab', 'rag' ) ); ?>"
                class="nav-tab <?php echo 'rag' === $active_tab ? 'nav-tab-active' : ''; ?>">
-                🧠 <?php esc_html_e( 'Knowledge Base', 'capitano-chatbot' ); ?>
+                🧠 <?php esc_html_e( 'Knowledge Base', 'smart-ai-chatbot' ); ?>
             </a>
             <a href="<?php echo esc_url( add_query_arg( 'tab', 'logs' ) ); ?>"
                class="nav-tab <?php echo 'logs' === $active_tab ? 'nav-tab-active' : ''; ?>">
-                📋 <?php esc_html_e( 'Logs', 'capitano-chatbot' ); ?>
+                📋 <?php esc_html_e( 'Logs', 'smart-ai-chatbot' ); ?>
             </a>
         </nav>
 
@@ -242,8 +242,8 @@ function cacb_settings_page() {
                 <!-- ── Provider Selector ── -->
                 <div class="cacb-card cacb-card--full">
                     <h2>🤖 AI Provider</h2>
-                    <p class="description"><?php esc_html_e( 'Επίλεξε ποιον AI πάροχο θέλεις να χρησιμοποιεί το chatbot. Το αντίστοιχο API key πρέπει να είναι συμπληρωμένο παρακάτω.', 'capitano-chatbot' ); ?></p>
-                    <label><?php esc_html_e( 'Ενεργός Provider', 'capitano-chatbot' ); ?></label>
+                    <p class="description"><?php esc_html_e( 'Επίλεξε ποιον AI πάροχο θέλεις να χρησιμοποιεί το chatbot. Το αντίστοιχο API key πρέπει να είναι συμπληρωμένο παρακάτω.', 'smart-ai-chatbot' ); ?></p>
+                    <label><?php esc_html_e( 'Ενεργός Provider', 'smart-ai-chatbot' ); ?></label>
                     <select name="cacb_provider" id="cacb_provider">
                         <?php
                         $providers = [
@@ -268,7 +268,7 @@ function cacb_settings_page() {
                 <div class="cacb-card cacb-card--provider" data-provider="openai">
                     <h2>🔑 OpenAI</h2>
 
-                    <label><?php esc_html_e( 'API Key', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'API Key', 'smart-ai-chatbot' ); ?></label>
                     <?php $has_key = ! empty( cacb_get( 'cacb_api_key' ) ); ?>
                     <input type="password"
                            name="cacb_api_key"
@@ -278,13 +278,13 @@ function cacb_settings_page() {
                            placeholder="<?php echo esc_attr( $has_key ? '••••••••••••••••' : 'sk-...' ); ?>" />
                     <p class="description">
                         <?php if ( $has_key ) : ?>
-                            ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις ή γράψε νέο για να το αντικαταστήσεις.', 'capitano-chatbot' ); ?>
+                            ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις ή γράψε νέο για να το αντικαταστήσεις.', 'smart-ai-chatbot' ); ?>
                         <?php else : ?>
-                            <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'capitano-chatbot' ); ?>
+                            <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'smart-ai-chatbot' ); ?>
                         <?php endif; ?>
                     </p>
 
-                    <label><?php esc_html_e( 'Model', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Model', 'smart-ai-chatbot' ); ?></label>
                     <select name="cacb_model">
                         <?php
                         $models = [
@@ -306,11 +306,11 @@ function cacb_settings_page() {
 
                     <div class="cacb-key-actions">
                         <button type="button" class="button cacb-test-key" data-provider="openai">
-                            🔍 <?php esc_html_e( 'Δοκιμή', 'capitano-chatbot' ); ?>
+                            🔍 <?php esc_html_e( 'Δοκιμή', 'smart-ai-chatbot' ); ?>
                         </button>
                         <?php if ( $has_key ) : ?>
                         <button type="button" class="button cacb-delete-key cacb-btn-danger" data-option="cacb_api_key">
-                            🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'capitano-chatbot' ); ?>
+                            🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'smart-ai-chatbot' ); ?>
                         </button>
                         <?php endif; ?>
                         <span id="cacb-test-status-openai" class="cacb-test-status"></span>
@@ -321,7 +321,7 @@ function cacb_settings_page() {
                 <div class="cacb-card cacb-card--provider" data-provider="claude">
                     <h2>🟣 Anthropic (Claude)</h2>
 
-                    <label><?php esc_html_e( 'API Key', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'API Key', 'smart-ai-chatbot' ); ?></label>
                     <?php $has_claude_key = ! empty( cacb_get( 'cacb_claude_api_key' ) ); ?>
                     <input type="password"
                            name="cacb_claude_api_key"
@@ -331,13 +331,13 @@ function cacb_settings_page() {
                            placeholder="<?php echo esc_attr( $has_claude_key ? '••••••••••••••••' : 'sk-ant-...' ); ?>" />
                     <p class="description">
                         <?php if ( $has_claude_key ) : ?>
-                            ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις.', 'capitano-chatbot' ); ?>
+                            ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις.', 'smart-ai-chatbot' ); ?>
                         <?php else : ?>
-                            <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'capitano-chatbot' ); ?>
+                            <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'smart-ai-chatbot' ); ?>
                         <?php endif; ?>
                     </p>
 
-                    <label><?php esc_html_e( 'Model', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Model', 'smart-ai-chatbot' ); ?></label>
                     <select name="cacb_claude_model">
                         <?php
                         $claude_models = [
@@ -359,11 +359,11 @@ function cacb_settings_page() {
 
                     <div class="cacb-key-actions">
                         <button type="button" class="button cacb-test-key" data-provider="claude">
-                            🔍 <?php esc_html_e( 'Δοκιμή', 'capitano-chatbot' ); ?>
+                            🔍 <?php esc_html_e( 'Δοκιμή', 'smart-ai-chatbot' ); ?>
                         </button>
                         <?php if ( $has_claude_key ) : ?>
                         <button type="button" class="button cacb-delete-key cacb-btn-danger" data-option="cacb_claude_api_key">
-                            🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'capitano-chatbot' ); ?>
+                            🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'smart-ai-chatbot' ); ?>
                         </button>
                         <?php endif; ?>
                         <span id="cacb-test-status-claude" class="cacb-test-status"></span>
@@ -374,7 +374,7 @@ function cacb_settings_page() {
                 <div class="cacb-card cacb-card--provider" data-provider="gemini">
                     <h2>🔵 Google (Gemini)</h2>
 
-                    <label><?php esc_html_e( 'API Key', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'API Key', 'smart-ai-chatbot' ); ?></label>
                     <?php $has_gemini_key = ! empty( cacb_get( 'cacb_gemini_api_key' ) ); ?>
                     <input type="password"
                            name="cacb_gemini_api_key"
@@ -384,13 +384,13 @@ function cacb_settings_page() {
                            placeholder="<?php echo esc_attr( $has_gemini_key ? '••••••••••••••••' : 'AIza...' ); ?>" />
                     <p class="description">
                         <?php if ( $has_gemini_key ) : ?>
-                            ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις.', 'capitano-chatbot' ); ?>
+                            ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις.', 'smart-ai-chatbot' ); ?>
                         <?php else : ?>
-                            <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'capitano-chatbot' ); ?>
+                            <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'smart-ai-chatbot' ); ?>
                         <?php endif; ?>
                     </p>
 
-                    <label><?php esc_html_e( 'Model', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Model', 'smart-ai-chatbot' ); ?></label>
                     <select name="cacb_gemini_model">
                         <?php
                         $gemini_models = [
@@ -412,11 +412,11 @@ function cacb_settings_page() {
 
                     <div class="cacb-key-actions">
                         <button type="button" class="button cacb-test-key" data-provider="gemini">
-                            🔍 <?php esc_html_e( 'Δοκιμή', 'capitano-chatbot' ); ?>
+                            🔍 <?php esc_html_e( 'Δοκιμή', 'smart-ai-chatbot' ); ?>
                         </button>
                         <?php if ( $has_gemini_key ) : ?>
                         <button type="button" class="button cacb-delete-key cacb-btn-danger" data-option="cacb_gemini_api_key">
-                            🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'capitano-chatbot' ); ?>
+                            🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'smart-ai-chatbot' ); ?>
                         </button>
                         <?php endif; ?>
                         <span id="cacb-test-status-gemini" class="cacb-test-status"></span>
@@ -427,32 +427,32 @@ function cacb_settings_page() {
                 <div class="cacb-card">
                     <h2>⚡ Limits & Ασφάλεια</h2>
 
-                    <label><?php esc_html_e( 'Max μηνύματα ανά ώρα / IP', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Max μηνύματα ανά ώρα / IP', 'smart-ai-chatbot' ); ?></label>
                     <input type="number"
                            name="cacb_rate_limit"
                            value="<?php echo esc_attr( cacb_get( 'cacb_rate_limit', 20 ) ); ?>"
                            min="1" max="200" class="small-text" />
-                    <p class="description"><?php esc_html_e( 'Προστασία κατά κατάχρησης. Προτεινόμενο: 20.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Προστασία κατά κατάχρησης. Προτεινόμενο: 20.', 'smart-ai-chatbot' ); ?></p>
 
-                    <label><?php esc_html_e( 'Max tokens απάντησης', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Max tokens απάντησης', 'smart-ai-chatbot' ); ?></label>
                     <input type="number"
                            name="cacb_max_tokens"
                            value="<?php echo esc_attr( cacb_get( 'cacb_max_tokens', 500 ) ); ?>"
                            min="100" max="2000" class="small-text" />
-                    <p class="description"><?php esc_html_e( 'Έλεγχος κόστους. Προτεινόμενο: 500.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Έλεγχος κόστους. Προτεινόμενο: 500.', 'smart-ai-chatbot' ); ?></p>
 
-                    <label><?php esc_html_e( 'Μηνύματα ιστορικού', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Μηνύματα ιστορικού', 'smart-ai-chatbot' ); ?></label>
                     <input type="number"
                            name="cacb_history_limit"
                            value="<?php echo esc_attr( cacb_get( 'cacb_history_limit', 10 ) ); ?>"
                            min="2" max="50" class="small-text" />
-                    <p class="description"><?php esc_html_e( 'Πόσα τελευταία μηνύματα να θυμάται. Προτεινόμενο: 10.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Πόσα τελευταία μηνύματα να θυμάται. Προτεινόμενο: 10.', 'smart-ai-chatbot' ); ?></p>
                 </div>
 
                 <!-- ── System Prompt ── -->
                 <div class="cacb-card cacb-card--full">
                     <h2>🧠 System Prompt</h2>
-                    <p class="description"><?php esc_html_e( 'Ορίζεις εδώ τι ξέρει το bot: πολιτικές, προϊόντα, τόνο ομιλίας.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Ορίζεις εδώ τι ξέρει το bot: πολιτικές, προϊόντα, τόνο ομιλίας.', 'smart-ai-chatbot' ); ?></p>
                     <textarea name="cacb_system_prompt"
                               rows="10"
                               class="large-text"><?php echo esc_textarea( cacb_get( 'cacb_system_prompt' ) ); ?></textarea>
@@ -464,7 +464,7 @@ function cacb_settings_page() {
 
                     <?php if ( ! function_exists( 'wc_get_products' ) ) : ?>
                         <div class="cacb-notice cacb-notice--warn">
-                            ⚠️ <?php esc_html_e( 'Το WooCommerce δεν είναι ενεργό σε αυτό το site.', 'capitano-chatbot' ); ?>
+                            ⚠️ <?php esc_html_e( 'Το WooCommerce δεν είναι ενεργό σε αυτό το site.', 'smart-ai-chatbot' ); ?>
                         </div>
                     <?php else : ?>
 
@@ -473,37 +473,37 @@ function cacb_settings_page() {
                                    name="cacb_wc_enabled"
                                    value="1"
                                    <?php checked( cacb_get( 'cacb_wc_enabled', '0' ), '1' ); ?> />
-                            <?php esc_html_e( 'Ενεργοποίηση — προσθέτει live προϊόντα στο system prompt', 'capitano-chatbot' ); ?>
+                            <?php esc_html_e( 'Ενεργοποίηση — προσθέτει live προϊόντα στο system prompt', 'smart-ai-chatbot' ); ?>
                         </label>
 
                         <div id="cacb-wc-options" <?php echo cacb_get( 'cacb_wc_enabled' ) ? '' : 'style="opacity:.45;pointer-events:none"'; ?>>
 
-                            <label><?php esc_html_e( 'Μέγιστος αριθμός προϊόντων', 'capitano-chatbot' ); ?></label>
+                            <label><?php esc_html_e( 'Μέγιστος αριθμός προϊόντων', 'smart-ai-chatbot' ); ?></label>
                             <input type="number"
                                    name="cacb_wc_limit"
                                    value="<?php echo esc_attr( cacb_get( 'cacb_wc_limit', 50 ) ); ?>"
                                    min="10" max="200" class="small-text" />
-                            <p class="description"><?php esc_html_e( 'Προτεινόμενο: 50. Περισσότερα = περισσότερα tokens.', 'capitano-chatbot' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Προτεινόμενο: 50. Περισσότερα = περισσότερα tokens.', 'smart-ai-chatbot' ); ?></p>
 
-                            <label><?php esc_html_e( 'Φιλτράρισμα κατηγοριών (προαιρετικό)', 'capitano-chatbot' ); ?></label>
+                            <label><?php esc_html_e( 'Φιλτράρισμα κατηγοριών (προαιρετικό)', 'smart-ai-chatbot' ); ?></label>
                             <input type="text"
                                    name="cacb_wc_categories"
                                    value="<?php echo esc_attr( cacb_get( 'cacb_wc_categories' ) ); ?>"
                                    class="regular-text"
                                    placeholder="krasia, meli, elaiolado" />
-                            <p class="description"><?php esc_html_e( 'Slugs κατηγοριών χωρισμένα με κόμμα. Άδειο = όλες οι κατηγορίες.', 'capitano-chatbot' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Slugs κατηγοριών χωρισμένα με κόμμα. Άδειο = όλες οι κατηγορίες.', 'smart-ai-chatbot' ); ?></p>
 
                             <?php
                             $cache_exists = ( false !== get_transient( 'cacb_wc_products_cache' ) );
                             if ( $cache_exists ) :
                             ?>
                             <div class="cacb-notice cacb-notice--info">
-                                ✅ <?php esc_html_e( 'Product cache ενεργό (1 ώρα). Ανανεώνεται αυτόματα όταν αλλάξει προϊόν.', 'capitano-chatbot' ); ?>
-                                <a href="<?php echo esc_url( add_query_arg( 'cacb_clear_cache', '1' ) ); ?>"><?php esc_html_e( 'Καθαρισμός τώρα', 'capitano-chatbot' ); ?></a>
+                                ✅ <?php esc_html_e( 'Product cache ενεργό (1 ώρα). Ανανεώνεται αυτόματα όταν αλλάξει προϊόν.', 'smart-ai-chatbot' ); ?>
+                                <a href="<?php echo esc_url( add_query_arg( 'cacb_clear_cache', '1' ) ); ?>"><?php esc_html_e( 'Καθαρισμός τώρα', 'smart-ai-chatbot' ); ?></a>
                             </div>
                             <?php else : ?>
                             <div class="cacb-notice cacb-notice--info">
-                                ℹ️ <?php esc_html_e( 'Cache θα δημιουργηθεί στο επόμενο chat request.', 'capitano-chatbot' ); ?>
+                                ℹ️ <?php esc_html_e( 'Cache θα δημιουργηθεί στο επόμενο chat request.', 'smart-ai-chatbot' ); ?>
                             </div>
                             <?php endif; ?>
 
@@ -521,26 +521,26 @@ function cacb_settings_page() {
 
                 <!-- ── Logging ── -->
                 <div class="cacb-card">
-                    <h2>📋 <?php esc_html_e( 'Καταγραφή (Logging)', 'capitano-chatbot' ); ?></h2>
+                    <h2>📋 <?php esc_html_e( 'Καταγραφή (Logging)', 'smart-ai-chatbot' ); ?></h2>
 
                     <label style="display:flex;align-items:center;gap:8px;margin-top:0">
                         <input type="hidden"   name="cacb_logging_enabled" value="0">
                         <input type="checkbox" name="cacb_logging_enabled" value="1"
                                <?php checked( cacb_get( 'cacb_logging_enabled', '1' ), '1' ); ?> />
-                        <?php esc_html_e( 'Ενεργοποίηση καταγραφής συνομιλιών', 'capitano-chatbot' ); ?>
+                        <?php esc_html_e( 'Ενεργοποίηση καταγραφής συνομιλιών', 'smart-ai-chatbot' ); ?>
                     </label>
-                    <p class="description"><?php esc_html_e( 'Αποθηκεύει ερωτήσεις και απαντήσεις στη βάση για επισκόπηση στην καρτέλα Logs.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Αποθηκεύει ερωτήσεις και απαντήσεις στη βάση για επισκόπηση στην καρτέλα Logs.', 'smart-ai-chatbot' ); ?></p>
 
-                    <label><?php esc_html_e( 'Διατήρηση logs (ημέρες)', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Διατήρηση logs (ημέρες)', 'smart-ai-chatbot' ); ?></label>
                     <input type="number"
                            name="cacb_log_retention"
                            value="<?php echo esc_attr( cacb_get( 'cacb_log_retention', 30 ) ); ?>"
                            min="1" max="365" class="small-text" />
-                    <p class="description"><?php esc_html_e( 'Εγγραφές παλαιότερες από τόσες ημέρες διαγράφονται αυτόματα.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Εγγραφές παλαιότερες από τόσες ημέρες διαγράφονται αυτόματα.', 'smart-ai-chatbot' ); ?></p>
 
                     <p style="margin-top:14px">
                         <a href="<?php echo esc_url( add_query_arg( 'tab', 'logs' ) ); ?>" class="button button-secondary">
-                            📋 <?php esc_html_e( 'Προβολή Logs', 'capitano-chatbot' ); ?>
+                            📋 <?php esc_html_e( 'Προβολή Logs', 'smart-ai-chatbot' ); ?>
                         </a>
                     </p>
                 </div>
@@ -549,39 +549,39 @@ function cacb_settings_page() {
                 <div class="cacb-card">
                     <h2>🎨 Εμφάνιση</h2>
 
-                    <label><?php esc_html_e( 'Τίτλος chat', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Τίτλος chat', 'smart-ai-chatbot' ); ?></label>
                     <input type="text"
                            name="cacb_chat_title"
                            value="<?php echo esc_attr( cacb_get( 'cacb_chat_title' ) ); ?>"
                            class="regular-text" />
 
-                    <label><?php esc_html_e( 'Welcome μήνυμα', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Welcome μήνυμα', 'smart-ai-chatbot' ); ?></label>
                     <textarea name="cacb_welcome_message"
                               rows="3"
                               class="large-text"><?php echo esc_textarea( cacb_get( 'cacb_welcome_message' ) ); ?></textarea>
 
-                    <label><?php esc_html_e( 'Ειδοποίηση Απορρήτου', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Ειδοποίηση Απορρήτου', 'smart-ai-chatbot' ); ?></label>
                     <input type="text"
                            name="cacb_privacy_notice"
                            value="<?php echo esc_attr( cacb_get( 'cacb_privacy_notice' ) ); ?>"
                            class="large-text"
-                           placeholder="<?php esc_attr_e( 'Οι συνομιλίες ενδέχεται να καταγράφονται.', 'capitano-chatbot' ); ?>" />
-                    <p class="description"><?php esc_html_e( 'Εμφανίζεται ως μικρό κείμενο κάτω από τον τίτλο. Αφήστε κενό για να κρυφτεί.', 'capitano-chatbot' ); ?></p>
+                           placeholder="<?php esc_attr_e( 'Οι συνομιλίες ενδέχεται να καταγράφονται.', 'smart-ai-chatbot' ); ?>" />
+                    <p class="description"><?php esc_html_e( 'Εμφανίζεται ως μικρό κείμενο κάτω από τον τίτλο. Αφήστε κενό για να κρυφτεί.', 'smart-ai-chatbot' ); ?></p>
 
-                    <label><?php esc_html_e( 'URL Πολιτικής Απορρήτου', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'URL Πολιτικής Απορρήτου', 'smart-ai-chatbot' ); ?></label>
                     <input type="url"
                            name="cacb_privacy_url"
                            value="<?php echo esc_attr( cacb_get( 'cacb_privacy_url' ) ); ?>"
                            class="regular-text"
                            placeholder="https://yoursite.com/privacy-policy" />
-                    <p class="description"><?php esc_html_e( 'Αν συμπληρωθεί, η ειδοποίηση θα περιλαμβάνει σύνδεσμο "Πολιτική Απορρήτου".', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Αν συμπληρωθεί, η ειδοποίηση θα περιλαμβάνει σύνδεσμο "Πολιτική Απορρήτου".', 'smart-ai-chatbot' ); ?></p>
 
-                    <label><?php esc_html_e( 'Primary χρώμα', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Primary χρώμα', 'smart-ai-chatbot' ); ?></label>
                     <input type="color"
                            name="cacb_primary_color"
                            value="<?php echo esc_attr( cacb_get( 'cacb_primary_color', '#1a1a2e' ) ); ?>" />
 
-                    <label><?php esc_html_e( 'Θέση bubble', 'capitano-chatbot' ); ?></label>
+                    <label><?php esc_html_e( 'Θέση bubble', 'smart-ai-chatbot' ); ?></label>
                     <select name="cacb_bubble_position">
                         <option value="right" <?php selected( cacb_get( 'cacb_bubble_position' ), 'right' ); ?>>Κάτω Δεξιά</option>
                         <option value="left"  <?php selected( cacb_get( 'cacb_bubble_position' ), 'left' ); ?>>Κάτω Αριστερά</option>
@@ -590,7 +590,7 @@ function cacb_settings_page() {
 
             </div><!-- .cacb-grid -->
 
-            <?php submit_button( __( 'Αποθήκευση', 'capitano-chatbot' ) ); ?>
+            <?php submit_button( __( 'Αποθήκευση', 'smart-ai-chatbot' ) ); ?>
         </form>
 
         <?php endif; // end settings tab ?>
@@ -661,7 +661,7 @@ function cacb_render_rag_page(): void {
         <div class="cacb-card cacb-card--full">
             <h2 style="margin-top:0">🧠 RAG — Semantic Search (Retrieval-Augmented Generation)</h2>
             <p class="description">
-                <?php esc_html_e( 'Αντί να στέλνεις όλα τα προϊόντα στο AI, το σύστημα βρίσκει σημαντικά μόνο τα σχετικά με κάθε ερώτηση. Λιγότερα tokens, καλύτερες απαντήσεις, χωρίς όριο προϊόντων.', 'capitano-chatbot' ); ?>
+                <?php esc_html_e( 'Αντί να στέλνεις όλα τα προϊόντα στο AI, το σύστημα βρίσκει σημαντικά μόνο τα σχετικά με κάθε ερώτηση. Λιγότερα tokens, καλύτερες απαντήσεις, χωρίς όριο προϊόντων.', 'smart-ai-chatbot' ); ?>
             </p>
 
             <form method="post" action="options.php">
@@ -672,57 +672,57 @@ function cacb_render_rag_page(): void {
                     <input type="checkbox" name="cacb_rag_enabled" value="1"
                            id="cacb_rag_enabled"
                            <?php checked( $rag_enabled, '1' ); ?> />
-                    <?php esc_html_e( 'Ενεργοποίηση RAG (Semantic Search)', 'capitano-chatbot' ); ?>
+                    <?php esc_html_e( 'Ενεργοποίηση RAG (Semantic Search)', 'smart-ai-chatbot' ); ?>
                 </label>
-                <p class="description" style="margin-left:28px"><?php esc_html_e( 'Χρησιμοποιεί vector embeddings αντί για απλή λίστα προϊόντων.', 'capitano-chatbot' ); ?></p>
+                <p class="description" style="margin-left:28px"><?php esc_html_e( 'Χρησιμοποιεί vector embeddings αντί για απλή λίστα προϊόντων.', 'smart-ai-chatbot' ); ?></p>
 
                 <div id="cacb-rag-options" <?php echo '1' === $rag_enabled ? '' : 'style="opacity:.45;pointer-events:none"'; ?>>
 
                     <label style="display:block;font-weight:600;margin-top:16px;margin-bottom:4px">
-                        <?php esc_html_e( 'Top-K αποτελέσματα', 'capitano-chatbot' ); ?>
+                        <?php esc_html_e( 'Top-K αποτελέσματα', 'smart-ai-chatbot' ); ?>
                     </label>
                     <input type="number" name="cacb_rag_top_k"
                            value="<?php echo esc_attr( $top_k ); ?>"
                            min="1" max="10" class="small-text" />
-                    <p class="description"><?php esc_html_e( 'Πόσα σχετικά αποτελέσματα να εισάγει στο prompt. Προτεινόμενο: 5.', 'capitano-chatbot' ); ?></p>
+                    <p class="description"><?php esc_html_e( 'Πόσα σχετικά αποτελέσματα να εισάγει στο prompt. Προτεινόμενο: 5.', 'smart-ai-chatbot' ); ?></p>
 
                     <label style="display:flex;align-items:center;gap:8px;margin-top:16px;font-weight:600">
                         <input type="hidden"   name="cacb_rag_index_pages" value="0">
                         <input type="checkbox" name="cacb_rag_index_pages" value="1"
                                <?php checked( $index_pages, '1' ); ?> />
-                        <?php esc_html_e( 'Ευρετηρίαση σελίδων WordPress (FAQ, Shipping, κ.λπ.)', 'capitano-chatbot' ); ?>
+                        <?php esc_html_e( 'Ευρετηρίαση σελίδων WordPress (FAQ, Shipping, κ.λπ.)', 'smart-ai-chatbot' ); ?>
                     </label>
-                    <p class="description" style="margin-left:28px"><?php esc_html_e( 'Εκτός από τα προϊόντα, το chatbot μπορεί να απαντά και με βάση το περιεχόμενο των σελίδων σου.', 'capitano-chatbot' ); ?></p>
+                    <p class="description" style="margin-left:28px"><?php esc_html_e( 'Εκτός από τα προϊόντα, το chatbot μπορεί να απαντά και με βάση το περιεχόμενο των σελίδων σου.', 'smart-ai-chatbot' ); ?></p>
 
                     <?php if ( 'claude' === $provider ) : ?>
                     <div class="cacb-notice cacb-notice--warn" style="margin-top:16px">
-                        ⚠️ <?php esc_html_e( 'Ο Claude δεν έχει Embeddings API. Χρειάζεται ένα OpenAI key αποκλειστικά για RAG (δεν χρησιμοποιείται για chat).', 'capitano-chatbot' ); ?>
+                        ⚠️ <?php esc_html_e( 'Ο Claude δεν έχει Embeddings API. Χρειάζεται ένα OpenAI key αποκλειστικά για RAG (δεν χρησιμοποιείται για chat).', 'smart-ai-chatbot' ); ?>
                     </div>
 
                     <label style="display:block;font-weight:600;margin-top:12px;margin-bottom:4px">
-                        <?php esc_html_e( 'OpenAI API Key (μόνο για Embeddings)', 'capitano-chatbot' ); ?>
+                        <?php esc_html_e( 'OpenAI API Key (μόνο για Embeddings)', 'smart-ai-chatbot' ); ?>
                     </label>
                     <input type="password" name="cacb_rag_openai_key" value=""
                            class="regular-text" autocomplete="new-password"
                            placeholder="<?php echo esc_attr( $has_rag_key ? '••••••••••••••••' : 'sk-...' ); ?>" />
                     <p class="description">
                         <?php if ( $has_rag_key ) : ?>
-                            ✅ <?php esc_html_e( 'Key αποθηκευμένο κρυπτογραφημένα. Άφησε κενό για να το κρατήσεις.', 'capitano-chatbot' ); ?>
+                            ✅ <?php esc_html_e( 'Key αποθηκευμένο κρυπτογραφημένα. Άφησε κενό για να το κρατήσεις.', 'smart-ai-chatbot' ); ?>
                         <?php else : ?>
-                            <?php esc_html_e( 'Αποκτά δωρεάν credits από platform.openai.com. Θα αποθηκευτεί κρυπτογραφημένο.', 'capitano-chatbot' ); ?>
+                            <?php esc_html_e( 'Αποκτά δωρεάν credits από platform.openai.com. Θα αποθηκευτεί κρυπτογραφημένο.', 'smart-ai-chatbot' ); ?>
                         <?php endif; ?>
                     </p>
                     <?php if ( $has_rag_key ) : ?>
                     <button type="button" class="button cacb-delete-key cacb-btn-danger"
                             data-option="cacb_rag_openai_key" style="margin-top:6px">
-                        🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'capitano-chatbot' ); ?>
+                        🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'smart-ai-chatbot' ); ?>
                     </button>
                     <?php endif; ?>
                     <?php endif; // claude ?>
 
                 </div><!-- #cacb-rag-options -->
 
-                <?php submit_button( __( 'Αποθήκευση', 'capitano-chatbot' ) ); ?>
+                <?php submit_button( __( 'Αποθήκευση', 'smart-ai-chatbot' ) ); ?>
             </form>
             <script>
             document.getElementById('cacb_rag_enabled').addEventListener('change', function () {
@@ -735,24 +735,24 @@ function cacb_render_rag_page(): void {
 
         <!-- ── Index Status ── -->
         <div class="cacb-card cacb-card--full" id="cacb-rag-status-card">
-            <h2 style="margin-top:0">📊 <?php esc_html_e( 'Κατάσταση Index', 'capitano-chatbot' ); ?></h2>
+            <h2 style="margin-top:0">📊 <?php esc_html_e( 'Κατάσταση Index', 'smart-ai-chatbot' ); ?></h2>
 
             <div id="cacb-rag-status-wrap">
                 <span class="spinner is-active" style="float:none;margin:0 8px 0 0"></span>
-                <?php esc_html_e( 'Φόρτωση…', 'capitano-chatbot' ); ?>
+                <?php esc_html_e( 'Φόρτωση…', 'smart-ai-chatbot' ); ?>
             </div>
 
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
                 <?php if ( function_exists( 'wc_get_products' ) ) : ?>
                 <button type="button" id="cacb-rag-index-products" class="button button-primary">
-                    ⚡ <?php esc_html_e( 'Index Προϊόντων', 'capitano-chatbot' ); ?>
+                    ⚡ <?php esc_html_e( 'Index Προϊόντων', 'smart-ai-chatbot' ); ?>
                 </button>
                 <?php endif; ?>
                 <button type="button" id="cacb-rag-index-pages" class="button button-secondary">
-                    📄 <?php esc_html_e( 'Index Σελίδων', 'capitano-chatbot' ); ?>
+                    📄 <?php esc_html_e( 'Index Σελίδων', 'smart-ai-chatbot' ); ?>
                 </button>
                 <button type="button" id="cacb-rag-clear" class="button cacb-btn-danger">
-                    🗑 <?php esc_html_e( 'Καθαρισμός Index', 'capitano-chatbot' ); ?>
+                    🗑 <?php esc_html_e( 'Καθαρισμός Index', 'smart-ai-chatbot' ); ?>
                 </button>
             </div>
 

@@ -1,12 +1,11 @@
 <?php
 /**
- * Plugin Name: Capitano AI Chatbot
- * Plugin URI:  https://github.com/akontaksis
- * Description: AI-powered chatbot supporting OpenAI (GPT), Anthropic (Claude), and Google (Gemini). Production-ready with streaming, rate limiting, security, and full admin controls.
+ * Plugin Name: Smart AI Chatbot
+ * Plugin URI:  https://wordpress.org/plugins/smart-ai-chatbot
+ * Description: AI-powered chatbot supporting OpenAI (GPT), Anthropic (Claude), and Google (Gemini). RAG semantic search, streaming, rate limiting, AES-256-GCM security, and full admin controls.
  * Version:     1.2.0
- * Author:      Athanasios Kontaksis
  * License:     GPL-2.0+
- * Text Domain: capitano-chatbot
+ * Text Domain: smart-ai-chatbot
  */
 
 defined( 'ABSPATH' ) || exit;
