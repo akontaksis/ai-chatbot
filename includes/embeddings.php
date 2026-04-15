@@ -521,7 +521,7 @@ function cacb_rag_build_context( string $query ): string {
     }
 
     // Minimum relevance threshold — filters out completely unrelated items
-    $threshold = 0.25;
+    $threshold = 0.18;
     $lines     = [ "\n\n---\nΣΧΕΤΙΚΕΣ ΠΛΗΡΟΦΟΡΙΕΣ ΑΠΟ ΤΟ ΚΑΤΑΣΤΗΜΑ:" ];
 
     foreach ( $results as $item ) {
