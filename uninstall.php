@@ -37,6 +37,7 @@ $options = [
     // Logging
     'cacb_logging_enabled',
     'cacb_log_retention',
+    'cacb_debug_mode',
     'cacb_db_version',
     // Privacy
     'cacb_privacy_notice',

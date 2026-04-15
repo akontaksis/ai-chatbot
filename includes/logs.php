@@ -8,13 +8,14 @@ function cacb_create_logs_table(): void {
     $charset_collate = $wpdb->get_charset_collate();
 
     $sql = "CREATE TABLE {$table} (
-        id         bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        created_at datetime            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        provider   varchar(20)         NOT NULL DEFAULT '',
-        model      varchar(100)        NOT NULL DEFAULT '',
-        user_msg   text                NOT NULL,
-        bot_reply  text                NOT NULL,
-        ip_hash    varchar(64)         NOT NULL DEFAULT '',
+        id          bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        created_at  datetime            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        provider    varchar(20)         NOT NULL DEFAULT '',
+        model       varchar(100)        NOT NULL DEFAULT '',
+        user_msg    text                NOT NULL,
+        bot_reply   text                NOT NULL,
+        ip_hash     varchar(64)         NOT NULL DEFAULT '',
+        rag_context text                         DEFAULT NULL,
         PRIMARY KEY  (id),
         KEY idx_created (created_at)
     ) {$charset_collate};";
@@ -34,21 +35,26 @@ function cacb_maybe_upgrade_db(): void {
 }
 
 // ── Write a log entry ─────────────────────────────────────────────────────────
-function cacb_log_exchange( string $provider, string $model, string $user_msg, string $bot_reply ): void {
+function cacb_log_exchange( string $provider, string $model, string $user_msg, string $bot_reply, string $rag_context = '' ): void {
     if ( get_option( 'cacb_logging_enabled', '1' ) !== '1' ) return;
 
     global $wpdb;
-    $wpdb->insert(
-        $wpdb->prefix . 'cacb_logs',
-        [
-            'provider'  => $provider,
-            'model'     => $model,
-            'user_msg'  => $user_msg,
-            'bot_reply' => $bot_reply,
-            'ip_hash'   => cacb_log_ip_hash(),
-        ],
-        [ '%s', '%s', '%s', '%s', '%s' ]
-    );
+    $row = [
+        'provider'  => $provider,
+        'model'     => $model,
+        'user_msg'  => $user_msg,
+        'bot_reply' => $bot_reply,
+        'ip_hash'   => cacb_log_ip_hash(),
+    ];
+    $fmt = [ '%s', '%s', '%s', '%s', '%s' ];
+
+    // Store RAG context only when debug mode is on and context is non-empty
+    if ( get_option( 'cacb_debug_mode', '0' ) === '1' && ! empty( $rag_context ) ) {
+        $row['rag_context'] = $rag_context;
+        $fmt[]              = '%s';
+    }
+
+    $wpdb->insert( $wpdb->prefix . 'cacb_logs', $row, $fmt );
 
     // Prune on ~10% of writes to avoid overhead every request
     if ( wp_rand( 1, 10 ) === 1 ) {
@@ -95,7 +101,16 @@ function cacb_ajax_log_exchange(): void {
             case 'gemini': $model = sanitize_text_field( get_option( 'cacb_gemini_model', 'gemini-2.0-flash' ) );  break;
             default:       $model = sanitize_text_field( get_option( 'cacb_model', 'gpt-4o-mini' ) );              break;
         }
-        cacb_log_exchange( $provider, $model, $user_msg, $bot_reply );
+
+        // Streaming: retrieve RAG context stored by cacb_handle_stream() before response was sent
+        $rag_context = '';
+        if ( get_option( 'cacb_debug_mode', '0' ) === '1' ) {
+            $ctx_key     = 'cacb_rag_ctx_' . cacb_log_ip_hash();
+            $rag_context = (string) ( get_transient( $ctx_key ) ?: '' );
+            delete_transient( $ctx_key );
+        }
+
+        cacb_log_exchange( $provider, $model, $user_msg, $bot_reply, $rag_context );
     }
 
     wp_send_json_success();
@@ -287,6 +302,7 @@ function cacb_render_logs_page(): void {
             </div>
         <?php else : ?>
 
+        <?php $debug_on = get_option( 'cacb_debug_mode', '0' ) === '1'; ?>
         <table class="widefat striped cacb-log-table">
             <thead>
                 <tr>
@@ -294,6 +310,9 @@ function cacb_render_logs_page(): void {
                     <th style="width:130px"><?php esc_html_e( 'Provider / Model', 'smart-ai-chatbot' ); ?></th>
                     <th><?php esc_html_e( 'Ερώτηση χρήστη', 'smart-ai-chatbot' ); ?></th>
                     <th><?php esc_html_e( 'Απάντηση AI', 'smart-ai-chatbot' ); ?></th>
+                    <?php if ( $debug_on ) : ?>
+                    <th style="width:160px">🔍 RAG Context</th>
+                    <?php endif; ?>
                     <th style="width:90px"><?php esc_html_e( 'IP hash', 'smart-ai-chatbot' ); ?></th>
                 </tr>
             </thead>
@@ -333,6 +352,17 @@ function cacb_render_logs_page(): void {
                             </a>
                         <?php endif; ?>
                     </td>
+                    <?php if ( $debug_on ) : ?>
+                    <td style="vertical-align:top;font-size:12px">
+                        <?php if ( ! empty( $log->rag_context ) ) : ?>
+                            <span style="color:#1e6637">✅ Context</span><br>
+                            <a href="#" class="cacb-expand" data-full="<?php echo esc_attr( $log->rag_context ); ?>"
+                               style="font-size:11px">[εμφάνιση]</a>
+                        <?php else : ?>
+                            <span style="color:#aaa;font-size:11px">— κανένα</span>
+                        <?php endif; ?>
+                    </td>
+                    <?php endif; ?>
                     <td style="vertical-align:top;font-size:11px;color:#aaa;word-break:break-all">
                         <?php echo esc_html( substr( $log->ip_hash, 0, 10 ) ); ?>…
                     </td>

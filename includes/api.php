@@ -225,7 +225,8 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     }
 
     $system_prompt = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
-    $system_prompt .= cacb_get_smart_context( $client_messages );
+    $rag_context   = cacb_get_smart_context( $client_messages );
+    $system_prompt .= $rag_context;
     $max_tokens = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
 
     // 5. Call the selected provider
@@ -254,7 +255,7 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     foreach ( array_reverse( $client_messages ) as $msg ) {
         if ( 'user' === $msg['role'] ) { $last_user_msg = $msg['content']; break; }
     }
-    cacb_log_exchange( $provider, $model, $last_user_msg, $result );
+    cacb_log_exchange( $provider, $model, $last_user_msg, $result, $rag_context );
 
     // 7. Return sanitized reply
     return rest_ensure_response( [
@@ -473,8 +474,14 @@ function cacb_handle_stream(): void {
         $messages = array_slice( $messages, - $history_limit );
     }
     $system_prompt  = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
-    $system_prompt .= cacb_get_smart_context( $messages );
+    $rag_context    = cacb_get_smart_context( $messages );
+    $system_prompt .= $rag_context;
     $max_tokens     = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
+
+    // Store RAG context in a short-lived transient so the browser's log AJAX call can retrieve it
+    if ( get_option( 'cacb_debug_mode', '0' ) === '1' && ! empty( $rag_context ) ) {
+        set_transient( 'cacb_rag_ctx_' . cacb_log_ip_hash(), $rag_context, 60 );
+    }
 
     // 7. Delegate to provider
     switch ( $provider ) {

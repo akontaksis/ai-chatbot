@@ -37,6 +37,7 @@ function cacb_register_settings() {
         'cacb_gemini_model',
         'cacb_logging_enabled',
         'cacb_log_retention',
+        'cacb_debug_mode',
         'cacb_privacy_notice',
         'cacb_privacy_url',
     ];
@@ -150,7 +151,7 @@ function cacb_sanitize_option( $value ) {
     }
 
     // Boolean toggles — always store '1' or '0'
-    $bool_options = [ 'cacb_logging_enabled', 'cacb_rag_enabled', 'cacb_rag_index_pages' ];
+    $bool_options = [ 'cacb_logging_enabled', 'cacb_debug_mode', 'cacb_rag_enabled', 'cacb_rag_index_pages' ];
     foreach ( $bool_options as $opt ) {
         if ( strpos( $filter, $opt ) !== false ) {
             return '1' === $value ? '1' : '0';
@@ -540,6 +541,14 @@ function cacb_settings_page() {
                         <?php esc_html_e( 'Ενεργοποίηση καταγραφής συνομιλιών', 'smart-ai-chatbot' ); ?>
                     </label>
                     <p class="description"><?php esc_html_e( 'Αποθηκεύει ερωτήσεις και απαντήσεις στη βάση για επισκόπηση στην καρτέλα Logs.', 'smart-ai-chatbot' ); ?></p>
+
+                    <label style="display:flex;align-items:center;gap:8px;margin-top:14px">
+                        <input type="hidden"   name="cacb_debug_mode" value="0">
+                        <input type="checkbox" name="cacb_debug_mode" value="1"
+                               <?php checked( cacb_get( 'cacb_debug_mode', '0' ), '1' ); ?> />
+                        <?php esc_html_e( '🔍 Debug mode — καταγραφή RAG context στα logs', 'smart-ai-chatbot' ); ?>
+                    </label>
+                    <p class="description"><?php esc_html_e( 'Αποθηκεύει ποια προϊόντα/σελίδες είδε το AI για κάθε ερώτηση. Χρήσιμο για debugging. Απενεργοποίησε σε production.', 'smart-ai-chatbot' ); ?></p>
 
                     <label><?php esc_html_e( 'Διατήρηση logs (ημέρες)', 'smart-ai-chatbot' ); ?></label>
                     <input type="number"
