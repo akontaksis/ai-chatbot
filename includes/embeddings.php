@@ -363,7 +363,8 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
                     $text_keys = [ 'title', 'description', 'text', 'editor', 'content',
                                    'html', 'caption', 'button_text', 'heading', 'sub_title' ];
                     if ( in_array( $key, $text_keys, true ) ) {
-                        $clean = wp_strip_all_tags( $value );
+                        // Strip shortcodes (Elementor dynamic tags, WP shortcodes)
+                        $clean = wp_strip_all_tags( strip_shortcodes( $value ) );
                         if ( strlen( trim( $clean ) ) > 4 ) {
                             $texts[] = trim( $clean );
                         }
@@ -376,8 +377,8 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
         }
     }
 
-    // Default: standard post_content (Gutenberg, Classic Editor, etc.)
-    return wp_strip_all_tags( $post->post_content );
+    // Default: standard post_content — strip shortcodes + HTML
+    return wp_strip_all_tags( strip_shortcodes( $post->post_content ) );
 }
 
 /**
@@ -394,10 +395,38 @@ function cacb_index_page( int $post_id ) {
         return true;
     }
 
+    // Skip WooCommerce system pages and other non-informational pages
+    $system_slugs = [
+        'cart', 'checkout', 'my-account', 'order-received',
+        'wishlist', 'login', 'register', 'lost-password',
+        'sample-page', 'privacy-policy',
+    ];
+    if ( in_array( $post->post_name, $system_slugs, true ) ) {
+        cacb_delete_embedding( 'page', $post_id );
+        return true;
+    }
+    // Also skip WooCommerce built-in page IDs
+    $wc_page_ids = [];
+    foreach ( [ 'cart', 'checkout', 'myaccount', 'shop' ] as $wc_page ) {
+        $id = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( $wc_page ) : -1;
+        if ( $id > 0 ) $wc_page_ids[] = $id;
+    }
+    if ( in_array( $post_id, $wc_page_ids, true ) ) {
+        cacb_delete_embedding( 'page', $post_id );
+        return true;
+    }
+
     $title   = get_the_title( $post_id );
     $content = cacb_extract_page_text( $post_id, $post );
+
+    // Skip pages with too little real content — system/empty pages
+    if ( mb_strlen( trim( $content ) ) < 50 ) {
+        cacb_delete_embedding( 'page', $post_id );
+        return true;
+    }
+
     // Limit content to ~4 000 chars (~1 000 tokens) to stay within limits
-    $text    = $title . "\n\n" . mb_substr( $content, 0, 4000 );
+    $text = $title . "\n\n" . mb_substr( $content, 0, 4000 );
     $hash    = md5( $text );
 
     global $wpdb;
