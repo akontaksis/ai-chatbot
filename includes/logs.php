@@ -247,10 +247,10 @@ function cacb_render_logs_page(): void {
     global $wpdb;
     $table  = $wpdb->prefix . 'cacb_logs';
     $per_pg = 20;
-    $page   = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
+    $page   = max( 1, (int) wp_unslash( $_GET['paged'] ?? 1 ) );
     $offset = ( $page - 1 ) * $per_pg;
 
-    $pf    = sanitize_text_field( $_GET['cacb_provider'] ?? '' );
+    $pf    = sanitize_text_field( wp_unslash( $_GET['cacb_provider'] ?? '' ) );
     $where = $pf ? $wpdb->prepare( 'WHERE provider = %s', $pf ) : '';
 
     // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared

@@ -3,14 +3,14 @@
  * Plugin Name: Smart AI Chatbot
  * Plugin URI:  https://wordpress.org/plugins/smart-ai-chatbot
  * Description: AI-powered chatbot supporting OpenAI (GPT), Anthropic (Claude), and Google (Gemini). RAG semantic search, streaming, rate limiting, AES-256-GCM security, and full admin controls.
- * Version:     1.2.4
+ * Version:     1.2.5
  * License:     GPL-2.0+
  * Text Domain: smart-ai-chatbot
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CACB_VERSION',     '1.2.4' );
+define( 'CACB_VERSION',     '1.2.5' );
 define( 'CACB_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'CACB_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'CACB_PLUGIN_FILE', __FILE__ );
@@ -74,9 +74,9 @@ function cacb_deactivate() {
 add_action( 'admin_init', 'cacb_maybe_clear_cache' );
 function cacb_maybe_clear_cache() {
     if ( ! current_user_can( 'manage_options' ) ) return;
-    if ( isset( $_GET['cacb_clear_cache'] ) && '1' === $_GET['cacb_clear_cache'] ) {
-        delete_transient( 'cacb_wc_products_cache' );
-        wp_safe_redirect( remove_query_arg( 'cacb_clear_cache' ) );
-        exit;
-    }
+    if ( ! isset( $_GET['cacb_clear_cache'] ) || '1' !== $_GET['cacb_clear_cache'] ) return;
+    check_admin_referer( 'cacb_clear_cache' );
+    delete_transient( 'cacb_wc_products_cache' );
+    wp_safe_redirect( remove_query_arg( [ 'cacb_clear_cache', '_wpnonce' ] ) );
+    exit;
 }

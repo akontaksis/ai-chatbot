@@ -115,6 +115,9 @@ function cacb_register_routes() {
 }
 
 // ── Sanitize incoming messages array ─────────────────────────────────────────
+// Max chars per message — prevents API credit drain via oversized payloads.
+define( 'CACB_MAX_MSG_CHARS', 4000 );
+
 function cacb_sanitize_messages( $messages ) {
     if ( ! is_array( $messages ) ) {
         return [];
@@ -128,9 +131,13 @@ function cacb_sanitize_messages( $messages ) {
         if ( ! in_array( $role, [ 'user', 'assistant' ], true ) ) {
             continue; // Only allow user/assistant from client
         }
+        $content = sanitize_textarea_field( $msg['content'] );
+        if ( mb_strlen( $content ) > CACB_MAX_MSG_CHARS ) {
+            $content = mb_substr( $content, 0, CACB_MAX_MSG_CHARS );
+        }
         $clean[] = [
             'role'    => $role,
-            'content' => sanitize_textarea_field( $msg['content'] ),
+            'content' => $content,
         ];
     }
     return $clean;

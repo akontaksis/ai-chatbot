@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.2.1**
+**Version 1.2.5**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)**, **Anthropic (Claude)** και **Google (Gemini)**.
 Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented Generation)**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
@@ -12,9 +12,8 @@ Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented
 1. Ανέβασε τον φάκελο `smart-ai-chatbot` στο `/wp-content/plugins/`
 2. Ενεργοποίησε το plugin από **WP Admin → Plugins**
 3. Πήγαινε στο **Settings → AI Chatbot** και:
-   - Επίλεξε τον AI Provider (OpenAI / Claude / Gemini)
-   - Συμπλήρωσε το αντίστοιχο API Key
-   - Ρύθμισε το System Prompt και την εμφάνιση
+   - Tab **AI Providers**: επίλεξε provider, συμπλήρωσε API key, επίλεξε model, ρύθμισε limits
+   - Tab **Ρυθμίσεις**: System Prompt, WooCommerce, Logging, Εμφάνιση
 
 ---
 
@@ -199,6 +198,8 @@ define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 | Capability check | Μόνο `manage_options` έχει πρόσβαση στα settings |
 | SSL verification | Όλα τα cURL requests με `CURLOPT_SSL_VERIFYPEER => true` |
 | Cloudflare-aware | Σωστή ανάγνωση IP πίσω από proxy/CDN |
+| Message length cap | Max 4 000 χαρακτήρες ανά μήνυμα — αποτρέπει API credit drain |
+| Enum whitelisting | Provider, model, bubble_position επαληθεύονται έναντι επιτρεπόμενων τιμών |
 
 ---
 
@@ -228,13 +229,14 @@ smart-ai-chatbot/
 
 ---
 
-## Limits (Settings → AI Chatbot → Limits & Ασφάλεια)
+## Limits (Settings → AI Chatbot → AI Providers → Limits & Ασφάλεια)
 
 | Ρύθμιση | Εύρος | Default | Περιγραφή |
 |---|---|---|---|
 | Rate limit | 1–200 | 20 | Μέγιστα μηνύματα ανά IP ανά ώρα |
 | Max tokens | 100–2000 | 500 | Μέγιστο μέγεθος απάντησης (έλεγχος κόστους) |
 | History limit | 2–50 | 10 | Πόσα τελευταία μηνύματα να θυμάται |
+| Message length | — | 4 000 | Max χαρακτήρες ανά μήνυμα χρήστη (server-side cap) |
 
 ---
 
@@ -306,6 +308,25 @@ wp_cacb_embeddings
 ---
 
 ## Changelog
+
+### v1.2.5 — AI Providers tab & security hardening
+
+**Admin panel restructure** (`includes/settings.php`)
+- Νέο tab **"🤖 AI Providers"** — provider selector, API keys, models, και limits & ασφάλεια σε ξεχωριστή καρτέλα
+- Νέο `cacb_providers_group` settings group — αποθήκευση από οποιοδήποτε tab δεν επηρεάζει τα πεδία των άλλων
+- Το tab "Ρυθμίσεις" περιέχει πλέον μόνο: System Prompt, WooCommerce, Logging, Εμφάνιση
+
+**Security fixes**
+- CSRF protection στο "Καθαρισμός cache" link — προστέθηκε `wp_nonce_url()` + `check_admin_referer()`
+- `wp_unslash()` πριν από κάθε `sanitize_*` σε `$_GET` parameters στο log viewer
+- Server-side message length cap (4 000 χαρακτήρες) — αποτρέπει API credit drain από oversized payloads
+- `cacb_sanitize_option` rewrite: exact match με `str_replace()` αντί για εύθραυστο `strpos()`, numeric clamping για όλα τα αριθμητικά πεδία, whitelist validation για enums (`cacb_provider`, `cacb_model`, `cacb_bubble_position` κ.ά.)
+
+**Bug fixes**
+- WooCommerce toggle JS bug — το `querySelector('[name="cacb_wc_enabled"]')` επέστρεφε το hidden input αντί για το checkbox· διορθώθηκε με `id="cacb_wc_enabled"` + `getElementById()`
+- `cacb_wc_enabled` προστέθηκε στα boolean options για consistent `'1'/'0'` storage
+
+---
 
 ### v1.2.1 — Bug fixes
 
