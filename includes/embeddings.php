@@ -266,6 +266,24 @@ function cacb_product_to_text( $product ): string {
         $parts[] = 'SKU: ' . $sku;
     }
 
+    // Attributes (global taxonomy + custom local)
+    $attributes = $product->get_attributes();
+    foreach ( $attributes as $attribute ) {
+        $label = wc_attribute_label( $attribute->get_name(), $product );
+
+        if ( $attribute->is_taxonomy() ) {
+            $terms = wp_get_post_terms( $product->get_id(), $attribute->get_name(), [ 'fields' => 'names' ] );
+            if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+                $parts[] = $label . ': ' . implode( ', ', $terms );
+            }
+        } else {
+            $values = $attribute->get_options();
+            if ( ! empty( $values ) ) {
+                $parts[] = $label . ': ' . implode( ', ', $values );
+            }
+        }
+    }
+
     // Description (short preferred, then full)
     $desc = wp_strip_all_tags( $product->get_short_description() );
     if ( ! $desc ) {
