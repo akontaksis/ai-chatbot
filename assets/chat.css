@@ -255,6 +255,15 @@
     border: 1px solid var(--cacb-border);
 }
 
+.cacb-msg--bot .cacb-bubble ul {
+    margin: 6px 0 2px 0;
+    padding-left: 18px;
+}
+
+.cacb-msg--bot .cacb-bubble li {
+    margin-bottom: 3px;
+}
+
 /* ── Typing indicator ── */
 #cacb-typing[hidden] { display: none; } /* explicit override — Chrome UA sheet lacks !important */
 

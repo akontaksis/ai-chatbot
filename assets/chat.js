@@ -92,8 +92,8 @@
             // User input: always escape to prevent XSS
             bubble_el.innerHTML = escapeHtml( text ).replace( /\n/g, '<br>' );
         } else {
-            // Bot reply: already sanitized server-side via wp_kses — render as HTML
-            bubble_el.innerHTML = text.replace( /\n/g, '<br>' );
+            // Bot reply: render markdown (escapes internally, then applies formatting)
+            bubble_el.innerHTML = renderMarkdown( text );
         }
 
         row.appendChild( bubble_el );
@@ -106,6 +106,41 @@
         const div = document.createElement( 'div' );
         div.appendChild( document.createTextNode( str ) );
         return div.innerHTML;
+    }
+
+    // ── Minimal markdown renderer (bold, italic, unordered lists) ─────────────
+    function renderMarkdown( text ) {
+        // Always escape first to prevent XSS
+        let html = escapeHtml( text );
+
+        // **bold**
+        html = html.replace( /\*\*(.+?)\*\*/g, '<strong>$1</strong>' );
+
+        // *italic* (single asterisk, not double)
+        html = html.replace( /(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>' );
+
+        // Unordered lists: lines starting with -  *  or •
+        const lines  = html.split( '\n' );
+        const parts  = [];
+        let   inList = false;
+
+        for ( const line of lines ) {
+            const m = line.match( /^[-*•]\s+(.+)/ );
+            if ( m ) {
+                if ( ! inList ) { parts.push( '<ul>' ); inList = true; }
+                parts.push( '<li>' + m[1] + '</li>' );
+            } else {
+                if ( inList ) { parts.push( '</ul>' ); inList = false; }
+                parts.push( line );
+            }
+        }
+        if ( inList ) parts.push( '</ul>' );
+
+        // Join with <br>, remove <br> around list tags
+        return parts.join( '\n' )
+            .replace( /\n/g, '<br>' )
+            .replace( /<br>(<\/?(?:ul|li)>)/g, '$1' )
+            .replace( /(<\/(?:ul|li)>)<br>/g, '$1' );
     }
 
     function scrollToBottom() {
@@ -199,7 +234,7 @@
                             botBubble = row.querySelector( '.cacb-bubble' );
                         }
                         fullReply += parsed.t;
-                        botBubble.innerHTML = escapeHtml( fullReply ).replace( /\n/g, '<br>' );
+                        botBubble.innerHTML = renderMarkdown( fullReply );
                         scrollToBottom();
                     }
                 }

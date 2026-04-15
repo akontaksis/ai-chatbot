@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.2.5**
+**Version 1.2.6**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)**, **Anthropic (Claude)** και **Google (Gemini)**.
 Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented Generation)**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
@@ -299,15 +299,46 @@ wp_cacb_embeddings
 ├── id           — AUTO INCREMENT
 ├── object_type  — 'product' | 'page'
 ├── object_id    — WooCommerce product ID ή WordPress post ID
-├── content_hash — MD5 του κειμένου (αποφυγή περιττών API calls)
+├── chunk_index  — 0 για προϊόντα · 0..n για σελίδες (v1.2.6+)
+├── chunk_text   — Το κείμενο αυτού του chunk (χρησιμοποιείται απευθείας στο RAG context)
+├── content_hash — MD5 ολόκληρου του κειμένου σελίδας (αποθηκεύεται στο chunk 0)
 ├── embedding    — JSON float array (1 536 ή 768 διαστάσεις)
 ├── dims         — Αριθμός διαστάσεων
 └── indexed_at   — Timestamp τελευταίας ευρετηρίασης
 ```
 
+> **Page chunking (v1.2.6):** Μεγάλες σελίδες (π.χ. 1 500-λέξεων πολιτική επιστροφών) χωρίζονται αυτόματα σε overlapping chunks των 200 λέξεων (με 40 λέξεις overlap). Κάθε chunk παίρνει το δικό του embedding. Το retrieval βρίσκει το πιο σχετικό chunk ακριβώς εκεί που αναφέρεται η απάντηση, αντί να φέρνει ολόκληρη τη σελίδα.
+
 ---
 
 ## Changelog
+
+### v1.2.6 — Page chunking, richer RAG context, Markdown rendering
+
+**Page chunking** (`includes/embeddings.php`)
+- Μεγάλες σελίδες (π.χ. πολιτική απορρήτου 1 500 λέξεων) χωρίζονται πλέον σε overlapping chunks των 200 λέξεων (40 λέξεις overlap) — κάθε chunk αποκτά ξεχωριστό embedding
+- Νέα `cacb_chunk_text()` utility function
+- Το retrieval βρίσκει το ακριβές τμήμα σελίδας που απαντά στο ερώτημα αντί για ολόκληρη τη σελίδα
+- Το `privacy-policy` αφαιρέθηκε από τη λίστα system slugs — πλέον ευρετηριάζεται κανονικά
+- Page batch size μειώθηκε σε 2 (από 5) για αποφυγή PHP timeout λόγω πολλαπλών API calls ανά σελίδα
+
+**DB schema migration** (`smart-ai-chatbot.php`, `includes/embeddings.php`)
+- Νέες στήλες: `chunk_index` (smallint) και `chunk_text` (mediumtext)
+- Νέο UNIQUE KEY: `(object_type, object_id, chunk_index)` αντί για `(object_type, object_id)`
+- Αυτόματο migration για υπάρχουσες εγκαταστάσεις μέσω `cacb_maybe_migrate_chunks_schema()` στο `admin_init`
+- `COUNT(DISTINCT object_id)` στο RAG status widget — εμφανίζει σωστό αριθμό σελίδων (όχι chunks)
+
+**Richer product context** (`includes/embeddings.php`)
+- `cacb_product_to_text()` παίρνει νέο `$desc_limit` parameter: **0 κατά το indexing** (ολόκληρη η περιγραφή → καλύτερο embedding) · **200 λέξεις στο RAG context** (αποφυγή φουσκώματος του prompt)
+- Πριν: 100 λέξεις περιγραφή παντού — τώρα: full text για embedding, 200 λέξεις για context
+- Context-aware RAG query: χρησιμοποιεί τα τελευταία 3 μηνύματα για σωστή ανάκτηση σε follow-up ερωτήσεις
+- Deduplication: αν πολλά chunks ίδιας σελίδας έχουν υψηλό score, εμφανίζεται μόνο το καλύτερο
+
+**Markdown rendering** (`assets/chat.js`, `assets/chat.css`)
+- Οι απαντήσεις του bot αποδίδονται με Markdown: **bold**, *italic*, bullet lists (`-`, `*`, `•`)
+- XSS-safe: escapeHtml εφαρμόζεται πριν οποιοδήποτε HTML markup
+
+---
 
 ### v1.2.5 — AI Providers tab & security hardening
 

@@ -22,21 +22,58 @@ function cacb_create_embeddings_table(): void {
     $table           = $wpdb->prefix . 'cacb_embeddings';
     $charset_collate = $wpdb->get_charset_collate();
 
+    // chunk_index: 0 for products (single embedding) or 0..n for page chunks.
+    // chunk_text:  stores the raw text of this chunk, used directly in RAG context.
     $sql = "CREATE TABLE {$table} (
         id           bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         object_type  varchar(20)         NOT NULL DEFAULT 'product',
         object_id    bigint(20) UNSIGNED NOT NULL,
+        chunk_index  smallint(5) UNSIGNED NOT NULL DEFAULT 0,
+        chunk_text   mediumtext,
         content_hash char(32)            NOT NULL,
         embedding    longtext            NOT NULL,
         dims         smallint(5) UNSIGNED NOT NULL DEFAULT 1536,
         indexed_at   datetime            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY  (id),
-        UNIQUE KEY   idx_object (object_type, object_id),
+        UNIQUE KEY   idx_object (object_type, object_id, chunk_index),
         KEY          idx_type   (object_type)
     ) {$charset_collate};";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
+}
+
+/**
+ * Runs once on admin_init to add chunk columns + fix the unique key on existing
+ * installations that were created before v1.2.6.
+ */
+function cacb_maybe_migrate_chunks_schema(): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'cacb_embeddings';
+
+    // Bail if the table doesn't exist yet (fresh install, activation hasn't run)
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    if ( ! $exists ) {
+        return;
+    }
+
+    // Already migrated if chunk_index column is present
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+    $col = $wpdb->get_var( "SHOW COLUMNS FROM {$table} LIKE 'chunk_index'" );
+    if ( $col ) {
+        return;
+    }
+
+    // Add new columns
+    // phpcs:disable WordPress.DB.DirectDatabaseQuery
+    $wpdb->query( "ALTER TABLE {$table} ADD COLUMN chunk_index smallint(5) UNSIGNED NOT NULL DEFAULT 0 AFTER object_id" );
+    $wpdb->query( "ALTER TABLE {$table} ADD COLUMN chunk_text mediumtext AFTER chunk_index" );
+
+    // Replace old unique key (object_type, object_id) with (object_type, object_id, chunk_index)
+    $wpdb->query( "ALTER TABLE {$table} DROP INDEX idx_object" );
+    $wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY idx_object (object_type, object_id, chunk_index)" );
+    // phpcs:enable
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -237,7 +274,7 @@ function cacb_cosine_similarity( array $a, array $b ): float {
  * @param  WC_Product $product
  * @return string
  */
-function cacb_product_to_text( $product ): string {
+function cacb_product_to_text( $product, int $desc_limit = 200 ): string {
     $parts = [ $product->get_name() ];
 
     // Categories
@@ -290,10 +327,54 @@ function cacb_product_to_text( $product ): string {
         $desc = wp_strip_all_tags( $product->get_description() );
     }
     if ( $desc ) {
-        $parts[] = wp_trim_words( $desc, 100, '' );
+        $parts[] = $desc_limit > 0 ? wp_trim_words( $desc, $desc_limit, '' ) : $desc;
     }
 
     return implode( ' | ', $parts );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHUNKING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Splits plain text into overlapping word-based chunks.
+ *
+ * Default: 200-word chunks with 40-word overlap so context is preserved
+ * across chunk boundaries (e.g. a sentence split between two chunks).
+ *
+ * @param  string $text          Plain text to chunk.
+ * @param  int    $chunk_words   Target words per chunk.
+ * @param  int    $overlap_words Words repeated from the end of the previous chunk.
+ * @return string[]              Array of chunk strings (at least one element).
+ */
+function cacb_chunk_text( string $text, int $chunk_words = 200, int $overlap_words = 40 ): array {
+    $words = preg_split( '/\s+/u', trim( $text ), -1, PREG_SPLIT_NO_EMPTY );
+    $total = count( $words );
+
+    if ( $total === 0 ) {
+        return [ $text ];
+    }
+
+    // If the whole text fits in one chunk, return it as-is
+    if ( $total <= $chunk_words ) {
+        return [ implode( ' ', $words ) ];
+    }
+
+    $step   = max( 1, $chunk_words - $overlap_words );
+    $chunks = [];
+
+    for ( $i = 0; $i < $total; $i += $step ) {
+        $slice    = array_slice( $words, $i, $chunk_words );
+        $chunks[] = implode( ' ', $slice );
+
+        // Stop when the last word of this chunk reaches the end
+        if ( $i + $chunk_words >= $total ) {
+            break;
+        }
+    }
+
+    return $chunks;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -319,7 +400,7 @@ function cacb_index_product( int $product_id ) {
         return true;
     }
 
-    $text = cacb_product_to_text( $product );
+    $text = cacb_product_to_text( $product, 0 ); // no desc limit — full text for best embedding quality
     $hash = md5( $text );
 
     global $wpdb;
@@ -348,12 +429,14 @@ function cacb_index_product( int $product_id ) {
         [
             'object_type'  => 'product',
             'object_id'    => $product_id,
+            'chunk_index'  => 0,
+            'chunk_text'   => $text,
             'content_hash' => $hash,
             'embedding'    => $json,
             'dims'         => count( $embedding ),
             'indexed_at'   => current_time( 'mysql' ),
         ],
-        [ '%s', '%d', '%s', '%s', '%d', '%s' ]
+        [ '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s' ]
     );
 
     return true;
@@ -400,7 +483,11 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
 }
 
 /**
- * Indexes (or re-indexes) a single WordPress page.
+ * Indexes (or re-indexes) a single WordPress page using 200-word chunks.
+ *
+ * Each chunk becomes a separate embedding row so that long pages (e.g. a
+ * 1 500-word privacy policy) can be retrieved at the relevant passage level
+ * rather than all-or-nothing.
  *
  * @param  int $post_id
  * @return true|WP_Error
@@ -413,17 +500,19 @@ function cacb_index_page( int $post_id ) {
         return true;
     }
 
-    // Skip WooCommerce system pages and other non-informational pages
+    // Skip WooCommerce functional pages — they contain no useful content for RAG.
+    // Note: 'privacy-policy' is intentionally NOT in this list so it gets chunked
+    // and indexed; users often ask about return/privacy policies.
     $system_slugs = [
         'cart', 'checkout', 'my-account', 'order-received',
-        'wishlist', 'login', 'register', 'lost-password',
-        'sample-page', 'privacy-policy',
+        'wishlist', 'login', 'register', 'lost-password', 'sample-page',
     ];
     if ( in_array( $post->post_name, $system_slugs, true ) ) {
         cacb_delete_embedding( 'page', $post_id );
         return true;
     }
-    // Also skip WooCommerce built-in page IDs
+
+    // Also skip WooCommerce built-in page IDs (cart, checkout, my-account, shop)
     $wc_page_ids = [];
     foreach ( [ 'cart', 'checkout', 'myaccount', 'shop' ] as $wc_page ) {
         $id = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( $wc_page ) : -1;
@@ -437,48 +526,63 @@ function cacb_index_page( int $post_id ) {
     $title   = get_the_title( $post_id );
     $content = cacb_extract_page_text( $post_id, $post );
 
-    // Skip pages with too little real content — system/empty pages
+    // Skip pages with too little real content (system/empty pages)
     if ( mb_strlen( trim( $content ) ) < 50 ) {
         cacb_delete_embedding( 'page', $post_id );
         return true;
     }
 
-    // Limit content to ~4 000 chars (~1 000 tokens) to stay within limits
-    $text = $title . "\n\n" . mb_substr( $content, 0, 4000 );
-    $hash    = md5( $text );
+    // Hash the full content so we can skip re-indexing unchanged pages.
+    // We store this hash only on chunk 0 and check it before re-indexing.
+    $full_hash = md5( $title . $content );
 
     global $wpdb;
     $existing_hash = $wpdb->get_var( $wpdb->prepare(
-        "SELECT content_hash FROM {$wpdb->prefix}cacb_embeddings WHERE object_type = 'page' AND object_id = %d",
+        "SELECT content_hash FROM {$wpdb->prefix}cacb_embeddings
+         WHERE object_type = 'page' AND object_id = %d AND chunk_index = 0",
         $post_id
     ) );
 
-    if ( $existing_hash === $hash ) {
-        return true;
+    if ( $existing_hash === $full_hash ) {
+        return true; // content unchanged — skip API calls
     }
 
-    $embedding = cacb_generate_embedding( $text );
-    if ( is_wp_error( $embedding ) ) {
-        return $embedding;
-    }
+    // Content changed (or first index): delete all existing chunks then re-index
+    cacb_delete_embedding( 'page', $post_id );
 
-    $json = wp_json_encode( $embedding );
-    if ( false === $json ) {
-        return new WP_Error( 'json_encode_fail', "Failed to encode embedding for page {$post_id}." );
-    }
+    // Split full content into 200-word overlapping chunks
+    $chunks = cacb_chunk_text( $content, 200, 40 );
 
-    $wpdb->replace(
-        $wpdb->prefix . 'cacb_embeddings',
-        [
-            'object_type'  => 'page',
-            'object_id'    => $post_id,
-            'content_hash' => $hash,
-            'embedding'    => $json,
-            'dims'         => count( $embedding ),
-            'indexed_at'   => current_time( 'mysql' ),
-        ],
-        [ '%s', '%d', '%s', '%s', '%d', '%s' ]
-    );
+    foreach ( $chunks as $idx => $chunk_text ) {
+        // Prepend the page title to every chunk so each embedding carries context
+        $embed_input = $title . "\n\n" . $chunk_text;
+
+        $embedding = cacb_generate_embedding( $embed_input );
+        if ( is_wp_error( $embedding ) ) {
+            return $embedding; // stop on first API error; partially indexed is OK
+        }
+
+        $json = wp_json_encode( $embedding );
+        if ( false === $json ) {
+            return new WP_Error( 'json_encode_fail', "Failed to encode embedding for page {$post_id} chunk {$idx}." );
+        }
+
+        $wpdb->insert(
+            $wpdb->prefix . 'cacb_embeddings',
+            [
+                'object_type'  => 'page',
+                'object_id'    => $post_id,
+                'chunk_index'  => $idx,
+                'chunk_text'   => $chunk_text,
+                // Store the full-page hash only on chunk 0 for change detection
+                'content_hash' => ( 0 === $idx ) ? $full_hash : '',
+                'embedding'    => $json,
+                'dims'         => count( $embedding ),
+                'indexed_at'   => current_time( 'mysql' ),
+            ],
+            [ '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s' ]
+        );
+    }
 
     return true;
 }
@@ -520,10 +624,10 @@ function cacb_rag_retrieve( string $query, int $top_k = 5 ): array {
         return [];
     }
 
-    // Fetch all stored vectors (acceptable up to ~1 000 items in PHP)
+    // Fetch all stored vectors (acceptable up to ~2 000 rows in PHP)
     // phpcs:ignore WordPress.DB.DirectDatabaseQuery
     $rows = $wpdb->get_results(
-        "SELECT object_type, object_id, embedding FROM {$wpdb->prefix}cacb_embeddings"
+        "SELECT object_type, object_id, chunk_index, chunk_text, embedding FROM {$wpdb->prefix}cacb_embeddings"
     );
 
     if ( empty( $rows ) ) {
@@ -537,9 +641,11 @@ function cacb_rag_retrieve( string $query, int $top_k = 5 ): array {
             continue;
         }
         $scores[] = [
-            'type'  => $row->object_type,
-            'id'    => (int) $row->object_id,
-            'score' => cacb_cosine_similarity( $query_vec, $vec ),
+            'type'        => $row->object_type,
+            'id'          => (int) $row->object_id,
+            'chunk_index' => (int) $row->chunk_index,
+            'chunk_text'  => (string) ( $row->chunk_text ?? '' ),
+            'score'       => cacb_cosine_similarity( $query_vec, $vec ),
         ];
     }
 
@@ -568,8 +674,9 @@ function cacb_rag_build_context( string $query ): string {
     }
 
     // Minimum relevance threshold — filters out completely unrelated items
-    $threshold = 0.18;
-    $lines     = [ "\n\n---\nΣΧΕΤΙΚΕΣ ΠΛΗΡΟΦΟΡΙΕΣ ΑΠΟ ΤΟ ΚΑΤΑΣΤΗΜΑ:" ];
+    $threshold  = 0.18;
+    $lines      = [ "\n\n---\nΣΧΕΤΙΚΕΣ ΠΛΗΡΟΦΟΡΙΕΣ ΑΠΟ ΤΟ ΚΑΤΑΣΤΗΜΑ:" ];
+    $seen_pages = []; // deduplicate: include only the best-scoring chunk per page
 
     foreach ( $results as $item ) {
         if ( $item['score'] < $threshold ) {
@@ -581,27 +688,33 @@ function cacb_rag_build_context( string $query ): string {
             if ( ! $product ) {
                 continue;
             }
-
-            $line = sprintf(
-                '• %s | %s€ | %s | SKU: %s',
-                $product->get_name(),
-                $product->get_price() ?: 'N/A',
-                $product->is_in_stock() ? 'Διαθέσιμο' : 'Μη διαθέσιμο',
-                $product->get_sku() ?: 'N/A'
-            );
-            $desc = wp_strip_all_tags( $product->get_short_description() );
-            if ( $desc ) {
-                $line .= ' — ' . wp_trim_words( $desc, 20, '...' );
-            }
-            $lines[] = $line;
+            // Always use live product data (price/stock can change independently of embedding).
+            // 200-word desc limit keeps the context prompt manageable when top_k products match.
+            $lines[] = '• ' . cacb_product_to_text( $product, 200 );
 
         } elseif ( 'page' === $item['type'] ) {
-            $post = get_post( $item['id'] );
-            if ( ! $post ) {
+            // Results are sorted by score DESC; first occurrence of a page_id is the best chunk
+            if ( isset( $seen_pages[ $item['id'] ] ) ) {
                 continue;
             }
-            $excerpt = wp_trim_words( cacb_extract_page_text( $item['id'], $post ), 60, '...' );
-            $lines[] = '📄 ' . get_the_title( $item['id'] ) . ': ' . $excerpt;
+            $seen_pages[ $item['id'] ] = true;
+
+            $title = get_the_title( $item['id'] );
+            if ( ! $title ) {
+                continue;
+            }
+
+            // Use the stored chunk text — no need to re-extract from post content
+            $chunk = trim( $item['chunk_text'] );
+            if ( $chunk === '' ) {
+                // Fallback for rows migrated from pre-chunking schema (chunk_text was empty)
+                $post  = get_post( $item['id'] );
+                $chunk = $post ? wp_trim_words( cacb_extract_page_text( $item['id'], $post ), 200, '...' ) : '';
+            }
+
+            if ( $chunk !== '' ) {
+                $lines[] = '📄 ' . $title . ': ' . $chunk;
+            }
         }
     }
 
@@ -640,14 +753,11 @@ function cacb_get_smart_context( array $messages ): string {
         return cacb_get_wc_product_context();
     }
 
-    // Extract the last user message as the RAG query
-    $query = '';
-    foreach ( array_reverse( $messages ) as $msg ) {
-        if ( 'user' === $msg['role'] ) {
-            $query = $msg['content'];
-            break;
-        }
-    }
+    // Build a context-aware query from the last 3 messages so the RAG
+    // understands follow-up questions ("Και αυτά είναι γλυκά;") correctly.
+    $recent = array_slice( $messages, -3 );
+    $query  = implode( ' ', array_column( $recent, 'content' ) );
+    $query  = trim( $query );
 
     if ( empty( $query ) ) {
         return cacb_get_wc_product_context();
@@ -712,8 +822,9 @@ function cacb_ajax_rag_status(): void {
     $table = $wpdb->prefix . 'cacb_embeddings';
 
     // phpcs:disable WordPress.DB.DirectDatabaseQuery
-    $indexed_products = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE object_type = 'product'" );
-    $indexed_pages    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE object_type = 'page'" );
+    // COUNT(DISTINCT object_id) so chunked pages count as one entry each
+    $indexed_products = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT object_id) FROM {$table} WHERE object_type = 'product'" );
+    $indexed_pages    = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT object_id) FROM {$table} WHERE object_type = 'page'" );
     $last_indexed     = $wpdb->get_var( "SELECT indexed_at FROM {$table} ORDER BY indexed_at DESC LIMIT 1" );
     // phpcs:enable
 
@@ -747,7 +858,8 @@ function cacb_ajax_rag_index_batch(): void {
 
     $type   = sanitize_key( wp_unslash( $_POST['object_type'] ?? 'product' ) );
     $offset = max( 0, (int) ( $_POST['offset'] ?? 0 ) );
-    $batch  = 5; // small batch to stay within PHP execution time
+    // Products: one API call each. Pages: up to ~10 chunks each → smaller batch.
+    $batch  = ( 'page' === $type ) ? 2 : 5;
 
     $indexed = 0;
     $errors  = [];
