@@ -17,9 +17,6 @@ $options = [
     // Anthropic Claude
     'cacb_claude_api_key',
     'cacb_claude_model',
-    // Google Gemini
-    'cacb_gemini_api_key',
-    'cacb_gemini_model',
     // Active provider
     'cacb_provider',
     // General settings

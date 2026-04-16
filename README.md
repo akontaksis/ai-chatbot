@@ -1,9 +1,9 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.3.0**
+**Version 1.4.0**
 
-AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)**, **Anthropic (Claude)** και **Google (Gemini)**.
-Production-ready με **RAG (Retrieval-Augmented Generation)**, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
+AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**.
+Production-ready με **Function Calling** για WooCommerce προϊόντα, **RAG (Retrieval-Augmented Generation)** για FAQ/σελίδες, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
 
 ---
 

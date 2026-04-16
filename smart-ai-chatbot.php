@@ -2,15 +2,15 @@
 /**
  * Plugin Name: Smart AI Chatbot
  * Plugin URI:  https://wordpress.org/plugins/smart-ai-chatbot
- * Description: AI-powered chatbot supporting OpenAI (GPT), Anthropic (Claude), and Google (Gemini). RAG semantic search, product cards, rate limiting, AES-256-GCM security, and full admin controls.
- * Version:     1.3.0
+ * Description: AI-powered chatbot supporting OpenAI (GPT) and Anthropic (Claude). Function calling for WooCommerce products, RAG semantic search, product cards, rate limiting, AES-256-GCM security, and full admin controls.
+ * Version:     1.4.0
  * License:     GPL-2.0+
  * Text Domain: smart-ai-chatbot
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CACB_VERSION',     '1.3.0' );
+define( 'CACB_VERSION',     '1.4.0' );
 define( 'CACB_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'CACB_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'CACB_PLUGIN_FILE', __FILE__ );
@@ -35,15 +35,13 @@ function cacb_activate() {
         'cacb_welcome_message'  => 'Γεια σας! Είμαι ο βοηθός του καταστήματος. Πώς μπορώ να σας εξυπηρετήσω;',
         'cacb_bubble_position'  => 'right',
         'cacb_primary_color'    => '#1a1a2e',
-        'cacb_system_prompt'    => 'Είσαι ένας εξυπηρετικός βοηθός. Απάντα πάντα στα Ελληνικά με φιλικό και επαγγελματικό τόνο. Αν δεν γνωρίζεις κάτι, πες ότι θα επικοινωνήσει μαζί τους η ομάδα.',
+        'cacb_system_prompt'    => 'Είσαι ένας εξυπηρετικός οινολογικός βοηθός για το κατάστημα. Απάντα πάντα στα Ελληνικά με φιλικό και επαγγελματικό τόνο. Απάντα κανονικά σε γενικές ερωτήσεις για κρασί και οινολογία. Μόνο αν η ερώτηση αφορά κάτι πολύ συγκεκριμένο για το κατάστημα που δεν γνωρίζεις (π.χ. παραγγελία, αποστολή, επιστροφή), τότε πρότεινε επικοινωνία με την ομάδα.',
         'cacb_wc_enabled'       => '0',
         'cacb_wc_limit'         => 50,
         'cacb_wc_categories'    => '',
         'cacb_provider'         => 'openai',
         'cacb_claude_api_key'   => '',
         'cacb_claude_model'     => 'claude-sonnet-4-6',
-        'cacb_gemini_api_key'   => '',
-        'cacb_gemini_model'     => 'gemini-2.0-flash',
         'cacb_logging_enabled'  => '1',
         'cacb_log_retention'    => 30,
         'cacb_debug_mode'       => '0',

@@ -44,8 +44,6 @@ function cacb_register_settings() {
         'cacb_model',
         'cacb_claude_api_key',
         'cacb_claude_model',
-        'cacb_gemini_api_key',
-        'cacb_gemini_model',
         'cacb_max_tokens',
         'cacb_rate_limit',
         'cacb_history_limit',
@@ -133,7 +131,7 @@ function cacb_sanitize_option( $value ) {
     $option_name = str_replace( 'sanitize_option_', '', current_filter() );
 
     // ── API key fields: encrypt on save, keep existing if left empty ──────────
-    $api_key_options = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key', 'cacb_rag_openai_key' ];
+    $api_key_options = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_rag_openai_key' ];
     if ( in_array( $option_name, $api_key_options, true ) ) {
         $value = sanitize_text_field( $value );
         if ( $value === '' ) {
@@ -184,10 +182,9 @@ function cacb_sanitize_option( $value ) {
 
     // ── Whitelisted enum fields ───────────────────────────────────────────────
     $whitelists = [
-        'cacb_provider'        => [ 'openai', 'claude', 'gemini' ],
+        'cacb_provider'        => [ 'openai', 'claude' ],
         'cacb_model'           => [ 'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo' ],
         'cacb_claude_model'    => [ 'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001' ],
-        'cacb_gemini_model'    => [ 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash' ],
         'cacb_bubble_position' => [ 'right', 'left' ],
     ];
     if ( isset( $whitelists[ $option_name ] ) ) {
@@ -495,7 +492,6 @@ function cacb_render_providers_page(): void {
     $current_provider = cacb_get( 'cacb_provider', 'openai' );
     $has_key          = ! empty( cacb_get( 'cacb_api_key' ) );
     $has_claude_key   = ! empty( cacb_get( 'cacb_claude_api_key' ) );
-    $has_gemini_key   = ! empty( cacb_get( 'cacb_gemini_api_key' ) );
     ?>
 
     <form method="post" action="options.php">
@@ -513,7 +509,6 @@ function cacb_render_providers_page(): void {
                     $providers = [
                         'openai' => 'OpenAI (GPT)',
                         'claude' => 'Anthropic (Claude)',
-                        'gemini' => 'Google (Gemini)',
                     ];
                     foreach ( $providers as $val => $label ) {
                         printf(
@@ -628,58 +623,6 @@ function cacb_render_providers_page(): void {
                     </button>
                     <?php endif; ?>
                     <span id="cacb-test-status-claude" class="cacb-test-status"></span>
-                </div>
-            </div>
-
-            <!-- ── Google Gemini ── -->
-            <div class="cacb-card cacb-card--provider" data-provider="gemini">
-                <h2>🔵 Google (Gemini)</h2>
-
-                <label><?php esc_html_e( 'API Key', 'smart-ai-chatbot' ); ?></label>
-                <input type="password"
-                       name="cacb_gemini_api_key"
-                       value=""
-                       class="regular-text"
-                       autocomplete="new-password"
-                       placeholder="<?php echo esc_attr( $has_gemini_key ? '••••••••••••••••' : 'AIza...' ); ?>" />
-                <p class="description">
-                    <?php if ( $has_gemini_key ) : ?>
-                        ✅ <?php esc_html_e( 'API key αποθηκευμένο κρυπτογραφημένα (AES-256). Άφησε κενό για να το κρατήσεις.', 'smart-ai-chatbot' ); ?>
-                    <?php else : ?>
-                        <?php esc_html_e( 'Θα αποθηκευτεί κρυπτογραφημένο. Μην το μοιράζεσαι.', 'smart-ai-chatbot' ); ?>
-                    <?php endif; ?>
-                </p>
-
-                <label><?php esc_html_e( 'Model', 'smart-ai-chatbot' ); ?></label>
-                <select name="cacb_gemini_model">
-                    <?php
-                    $gemini_models = [
-                        'gemini-2.0-flash' => 'Gemini 2.0 Flash (Γρήγορο — προτεινόμενο)',
-                        'gemini-1.5-pro'   => 'Gemini 1.5 Pro (Πιο έξυπνο)',
-                        'gemini-1.5-flash' => 'Gemini 1.5 Flash (Φθηνότατο)',
-                    ];
-                    $current_gemini = cacb_get( 'cacb_gemini_model', 'gemini-2.0-flash' );
-                    foreach ( $gemini_models as $val => $label ) {
-                        printf(
-                            '<option value="%s" %s>%s</option>',
-                            esc_attr( $val ),
-                            selected( $current_gemini, $val, false ),
-                            esc_html( $label )
-                        );
-                    }
-                    ?>
-                </select>
-
-                <div class="cacb-key-actions">
-                    <button type="button" class="button cacb-test-key" data-provider="gemini">
-                        🔍 <?php esc_html_e( 'Δοκιμή', 'smart-ai-chatbot' ); ?>
-                    </button>
-                    <?php if ( $has_gemini_key ) : ?>
-                    <button type="button" class="button cacb-delete-key cacb-btn-danger" data-option="cacb_gemini_api_key">
-                        🗑 <?php esc_html_e( 'Διαγραφή κλειδιού', 'smart-ai-chatbot' ); ?>
-                    </button>
-                    <?php endif; ?>
-                    <span id="cacb-test-status-gemini" class="cacb-test-status"></span>
                 </div>
             </div>
 

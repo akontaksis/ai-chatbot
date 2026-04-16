@@ -91,7 +91,7 @@ function cacb_ajax_delete_key(): void {
     if ( ! current_user_can( 'manage_options' ) ) wp_die();
 
     $option  = sanitize_text_field( wp_unslash( $_POST['option'] ?? '' ) );
-    $allowed = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_gemini_api_key', 'cacb_rag_openai_key' ];
+    $allowed = [ 'cacb_api_key', 'cacb_claude_api_key', 'cacb_rag_openai_key' ];
     if ( ! in_array( $option, $allowed, true ) ) {
         wp_send_json_error( esc_html__( 'Μη έγκυρο πεδίο.', 'smart-ai-chatbot' ) );
         return;
@@ -174,27 +174,6 @@ function cacb_do_key_test( string $provider ) {
             $body = json_decode( wp_remote_retrieve_body( $res ), true );
             return new WP_Error( 'api', $body['error']['message'] ?? ( 'HTTP ' . wp_remote_retrieve_response_code( $res ) ) );
 
-        case 'gemini':
-            $key   = cacb_decrypt_key( get_option( 'cacb_gemini_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_gemini_model', 'gemini-2.0-flash' ) );
-            if ( empty( $key ) ) {
-                return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'smart-ai-chatbot' ) );
-            }
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-                . rawurlencode( $model ) . ':generateContent?key=' . rawurlencode( $key );
-            $res = wp_remote_post( $url, [
-                'headers' => [ 'Content-Type' => 'application/json' ],
-                'body'    => wp_json_encode( [
-                    'contents'         => [ [ 'role' => 'user', 'parts' => [ [ 'text' => 'Hi' ] ] ] ],
-                    'generationConfig' => [ 'maxOutputTokens' => 5 ],
-                ] ),
-                'timeout' => 20,
-            ] );
-            if ( is_wp_error( $res ) ) return $res;
-            if ( 200 === (int) wp_remote_retrieve_response_code( $res ) ) return "Gemini / {$model}";
-            $body = json_decode( wp_remote_retrieve_body( $res ), true );
-            return new WP_Error( 'api', $body['error']['message'] ?? ( 'HTTP ' . wp_remote_retrieve_response_code( $res ) ) );
-
         default:
             return new WP_Error( 'invalid', __( 'Άγνωστος provider.', 'smart-ai-chatbot' ) );
     }
@@ -218,17 +197,24 @@ function cacb_render_logs_page(): void {
     $page   = max( 1, (int) wp_unslash( $_GET['paged'] ?? 1 ) );
     $offset = ( $page - 1 ) * $per_pg;
 
-    $pf    = sanitize_text_field( wp_unslash( $_GET['cacb_provider'] ?? '' ) );
-    $where = $pf ? $wpdb->prepare( 'WHERE provider = %s', $pf ) : '';
+    $pf = sanitize_text_field( wp_unslash( $_GET['cacb_provider'] ?? '' ) );
 
     // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-    $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} {$where}" );
-    $pages = (int) ceil( $total / $per_pg );
-    $logs  = $wpdb->get_results( $wpdb->prepare(
-        "SELECT * FROM {$table} {$where} ORDER BY created_at DESC LIMIT %d OFFSET %d",
-        $per_pg, $offset
-    ) );
+    if ( $pf ) {
+        $total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE provider = %s", $pf ) );
+        $logs  = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$table} WHERE provider = %s ORDER BY created_at DESC LIMIT %d OFFSET %d",
+            $pf, $per_pg, $offset
+        ) );
+    } else {
+        $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+        $logs  = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+            $per_pg, $offset
+        ) );
+    }
     // phpcs:enable
+    $pages = (int) ceil( $total / $per_pg );
 
     $nonce = wp_create_nonce( 'cacb_admin_nonce' );
     ?>
@@ -250,7 +236,7 @@ function cacb_render_logs_page(): void {
                     <input type="hidden" name="tab"  value="logs">
                     <select name="cacb_provider" onchange="this.form.submit()">
                         <option value=""><?php esc_html_e( '— Όλοι οι Providers —', 'smart-ai-chatbot' ); ?></option>
-                        <?php foreach ( [ 'openai', 'claude', 'gemini' ] as $p ) : ?>
+                        <?php foreach ( [ 'openai', 'claude' ] as $p ) : ?>
                             <option value="<?php echo esc_attr( $p ); ?>" <?php selected( $pf, $p ); ?>>
                                 <?php echo esc_html( ucfirst( $p ) ); ?>
                             </option>
@@ -381,7 +367,6 @@ function cacb_render_logs_page(): void {
         }
         .cacb-badge-openai { background: #e8f5e9; color: #1b5e20; }
         .cacb-badge-claude { background: #f3e5f5; color: #4a148c; }
-        .cacb-badge-gemini { background: #e3f2fd; color: #0d47a1; }
         .cacb-expand { font-size: 12px; margin-left: 4px; }
     </style>
     <script>

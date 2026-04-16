@@ -1,99 +1,6 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-// ── WooCommerce product context ───────────────────────────────────────────────
-function cacb_get_wc_product_context(): string {
-
-    // Feature disabled or WooCommerce not active
-    if ( ! get_option( 'cacb_wc_enabled', '0' ) ) {
-        return '';
-    }
-    if ( ! function_exists( 'wc_get_products' ) ) {
-        return '';
-    }
-
-    $cache_key = 'cacb_wc_products_cache';
-
-    // Try cache first (invalidated on product save/update)
-    $cached = get_transient( $cache_key );
-    if ( false !== $cached ) {
-        return $cached;
-    }
-
-    $limit      = max( 10, min( 200, (int) get_option( 'cacb_wc_limit', 50 ) ) );
-    $categories = get_option( 'cacb_wc_categories', '' ); // comma-separated slugs or empty = all
-
-    $args = [
-        'limit'   => $limit,
-        'status'  => 'publish',
-        'orderby' => 'date',
-        'order'   => 'DESC',
-    ];
-
-    // Filter by category if specified
-    if ( ! empty( $categories ) ) {
-        $args['category'] = array_map( 'trim', explode( ',', $categories ) );
-    }
-
-    $products = wc_get_products( $args );
-
-    if ( empty( $products ) ) {
-        return '';
-    }
-
-    $lines = [ "\n\n---\nΔΙΑΘΕΣΙΜΑ ΠΡΟΪΟΝΤΑ (live από το κατάστημα):" ];
-
-    foreach ( $products as $product ) {
-        $name  = $product->get_name();
-        $price = $product->get_price();
-        $sku   = $product->get_sku();
-        $stock = $product->is_in_stock() ? 'Διαθέσιμο' : 'Μη διαθέσιμο';
-        $desc  = wp_strip_all_tags( $product->get_short_description() );
-        $desc  = $desc ? ' — ' . wp_trim_words( $desc, 20, '...' ) : '';
-
-        // Get category names
-        $cat_ids   = $product->get_category_ids();
-        $cat_names = [];
-        foreach ( $cat_ids as $cat_id ) {
-            $term = get_term( $cat_id, 'product_cat' );
-            if ( $term && ! is_wp_error( $term ) ) {
-                $cat_names[] = $term->name;
-            }
-        }
-        $cats = $cat_names ? ' [' . implode( ', ', $cat_names ) . ']' : '';
-
-        // Format: Name | SKU | Price | Stock | Category | ID | Description
-        $line = sprintf(
-            '• %s%s | SKU: %s | %s€ | %s | ID:%d%s',
-            $name,
-            $cats,
-            $sku ?: 'N/A',
-            $price ?: 'N/A',
-            $stock,
-            $product->get_id(),
-            $desc
-        );
-
-        $lines[] = $line;
-    }
-
-    $lines[] = '---';
-    $context = implode( "\n", $lines );
-
-    // Cache for 1 hour — cleared automatically on product update (see hook below)
-    set_transient( $cache_key, $context, HOUR_IN_SECONDS );
-
-    return $context;
-}
-
-// ── Invalidate product cache when products are saved/updated ──────────────────
-add_action( 'woocommerce_update_product', 'cacb_clear_product_cache' );
-add_action( 'woocommerce_new_product',    'cacb_clear_product_cache' );
-add_action( 'woocommerce_delete_product', 'cacb_clear_product_cache' );
-function cacb_clear_product_cache() {
-    delete_transient( 'cacb_wc_products_cache' );
-}
-
 // ── Register REST routes ──────────────────────────────────────────────────────
 add_action( 'rest_api_init', 'cacb_register_routes' );
 function cacb_register_routes() {
@@ -147,7 +54,6 @@ function cacb_rest_get_product( WP_REST_Request $request ) {
 }
 
 // ── Sanitize incoming messages array ─────────────────────────────────────────
-// Max chars per message — prevents API credit drain via oversized payloads.
 define( 'CACB_MAX_MSG_CHARS', 4000 );
 
 function cacb_sanitize_messages( $messages ) {
@@ -161,7 +67,7 @@ function cacb_sanitize_messages( $messages ) {
         }
         $role = sanitize_text_field( $msg['role'] );
         if ( ! in_array( $role, [ 'user', 'assistant' ], true ) ) {
-            continue; // Only allow user/assistant from client
+            continue;
         }
         $content = sanitize_textarea_field( $msg['content'] );
         if ( mb_strlen( $content ) > CACB_MAX_MSG_CHARS ) {
@@ -183,7 +89,7 @@ function cacb_check_rate_limit(): bool {
     $count = (int) get_transient( $key );
 
     if ( $count >= $limit ) {
-        return false; // limit exceeded
+        return false;
     }
 
     set_transient( $key, $count + 1, HOUR_IN_SECONDS );
@@ -192,7 +98,7 @@ function cacb_check_rate_limit(): bool {
 
 function cacb_get_client_ip(): string {
     $headers = [
-        'HTTP_CF_CONNECTING_IP',   // Cloudflare
+        'HTTP_CF_CONNECTING_IP',
         'HTTP_X_FORWARDED_FOR',
         'HTTP_X_REAL_IP',
         'REMOTE_ADDR',
@@ -208,10 +114,115 @@ function cacb_get_client_ip(): string {
     return '0.0.0.0';
 }
 
+// ── Tool definitions for WooCommerce product search ───────────────────────────
+function cacb_get_tool_definitions(): array {
+    if ( ! function_exists( 'get_terms' ) ) {
+        return [];
+    }
+
+    // Read all product categories dynamically
+    $terms = get_terms( [
+        'taxonomy'   => 'product_cat',
+        'hide_empty' => true,
+    ] );
+
+    $cat_labels = [];
+    $cat_slugs  = [];
+    if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+        foreach ( $terms as $term ) {
+            // Exclude the default "Uncategorized" term
+            if ( 'uncategorized' === $term->slug ) {
+                continue;
+            }
+            $cat_labels[] = $term->name . ' (' . $term->slug . ')';
+            $cat_slugs[]  = $term->slug;
+        }
+    }
+
+    $cat_desc = empty( $cat_labels )
+        ? 'Κατηγορία προϊόντος (slug).'
+        : 'Κατηγορία προϊόντος. Διαθέσιμες: ' . implode( ', ', $cat_labels ) . '. Χρησιμοποίησε το slug.';
+
+    $properties = [
+        'keyword'   => [
+            'type'        => 'string',
+            'description' => 'Λέξη-κλειδί αναζήτησης: ποικιλία σταφυλιού, περιοχή, παραγωγός ή χαρακτηριστικά.',
+        ],
+        'max_price' => [
+            'type'        => 'number',
+            'description' => 'Μέγιστη τιμή σε ευρώ (π.χ. 15 για "κάτω από 15€").',
+        ],
+        'min_price' => [
+            'type'        => 'number',
+            'description' => 'Ελάχιστη τιμή σε ευρώ.',
+        ],
+    ];
+
+    if ( ! empty( $cat_slugs ) ) {
+        $properties['category'] = [
+            'type'        => 'string',
+            'description' => $cat_desc,
+            'enum'        => $cat_slugs,
+        ];
+    }
+
+    return [
+        'name'        => 'search_products',
+        'description' => 'Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση.',
+        'parameters'  => [
+            'type'       => 'object',
+            'properties' => $properties,
+        ],
+    ];
+}
+
+// ── Execute product search tool call ─────────────────────────────────────────
+function cacb_execute_search_products( array $args ): string {
+    if ( ! function_exists( 'wc_get_products' ) ) {
+        return 'Το WooCommerce δεν είναι ενεργό.';
+    }
+
+    $query_args = [
+        'limit'   => 8,
+        'status'  => 'publish',
+        'orderby' => 'date',
+        'order'   => 'DESC',
+    ];
+
+    if ( ! empty( $args['category'] ) ) {
+        $query_args['category'] = [ sanitize_text_field( $args['category'] ) ];
+    }
+
+    if ( ! empty( $args['max_price'] ) ) {
+        $query_args['max_price'] = (float) $args['max_price'];
+    }
+
+    if ( ! empty( $args['min_price'] ) ) {
+        $query_args['min_price'] = (float) $args['min_price'];
+    }
+
+    if ( ! empty( $args['keyword'] ) ) {
+        $query_args['s'] = sanitize_text_field( $args['keyword'] );
+    }
+
+    $products = wc_get_products( $query_args );
+
+    if ( empty( $products ) ) {
+        return 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
+    }
+
+    $lines = [];
+    foreach ( $products as $product ) {
+        $lines[] = '• ' . cacb_product_to_text( $product, 150 ) . ' | ID:' . $product->get_id();
+    }
+
+    return implode( "\n", $lines );
+}
+
 // ── Main chat handler ─────────────────────────────────────────────────────────
 function cacb_handle_chat( WP_REST_Request $request ) {
 
-    // 1. Verify nonce (CSRF protection)
+    // 1. Verify nonce
     $nonce = sanitize_text_field( $request->get_param( 'nonce' ) );
     if ( ! wp_verify_nonce( $nonce, 'cacb_chat_nonce' ) ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'smart-ai-chatbot' ), [ 'status' => 403 ] );
@@ -229,26 +240,17 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     // 3. Get provider and resolve API key + model
     $provider = sanitize_text_field( get_option( 'cacb_provider', 'openai' ) );
 
-    switch ( $provider ) {
-        case 'claude':
-            $api_key = defined( 'CACB_CLAUDE_API_KEY' )
-                ? CACB_CLAUDE_API_KEY
-                : cacb_decrypt_key( get_option( 'cacb_claude_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_claude_model', 'claude-sonnet-4-6' ) );
-            break;
-        case 'gemini':
-            $api_key = defined( 'CACB_GEMINI_API_KEY' )
-                ? CACB_GEMINI_API_KEY
-                : cacb_decrypt_key( get_option( 'cacb_gemini_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_gemini_model', 'gemini-2.0-flash' ) );
-            break;
-        default:
-            $provider = 'openai';
-            $api_key  = defined( 'CACB_OPENAI_API_KEY' )
-                ? CACB_OPENAI_API_KEY
-                : cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_model', 'gpt-4o-mini' ) );
-            break;
+    if ( 'claude' === $provider ) {
+        $api_key = defined( 'CACB_CLAUDE_API_KEY' )
+            ? CACB_CLAUDE_API_KEY
+            : cacb_decrypt_key( get_option( 'cacb_claude_api_key', '' ) );
+        $model = sanitize_text_field( get_option( 'cacb_claude_model', 'claude-sonnet-4-6' ) );
+    } else {
+        $provider = 'openai';
+        $api_key  = defined( 'CACB_OPENAI_API_KEY' )
+            ? CACB_OPENAI_API_KEY
+            : cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
+        $model = sanitize_text_field( get_option( 'cacb_model', 'gpt-4o-mini' ) );
     }
 
     if ( empty( $api_key ) ) {
@@ -257,38 +259,32 @@ function cacb_handle_chat( WP_REST_Request $request ) {
 
     // 4. Build messages
     $history_limit   = max( 2, (int) get_option( 'cacb_history_limit', 10 ) );
-    $client_messages = $request->get_param( 'messages' ); // already sanitized via args
+    $client_messages = $request->get_param( 'messages' );
 
     if ( count( $client_messages ) > $history_limit ) {
         $client_messages = array_slice( $client_messages, - $history_limit );
     }
 
+    // System prompt + RAG context (pages/FAQ only — products via function calling)
     $system_prompt = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
     $rag_context   = cacb_get_smart_context( $client_messages );
     $system_prompt .= $rag_context;
 
-    // Product card instruction — only when context contains products with IDs
-    if ( function_exists( 'wc_get_product' ) && strpos( $rag_context, ' | ID:' ) !== false ) {
-        $system_prompt .= "\n\nΌταν αναφέρεις συγκεκριμένο προϊόν, πρόσθεσε [PRODUCT:123] στο τέλος της πρότασης, όπου 123 είναι ο αριθμός που εμφανίζεται μετά το 'ID:' στα στοιχεία του προϊόντος. Παράδειγμα: αν το προϊόν έχει ID:3052, γράψε [PRODUCT:3052].";
+    // Product card instruction — active whenever WooCommerce is available
+    if ( function_exists( 'wc_get_product' ) ) {
+        $system_prompt .= "\n\nΌταν αναφέρεις συγκεκριμένο προϊόν από τα αποτελέσματα αναζήτησης, πρόσθεσε [PRODUCT:123] μετά το όνομά του, όπου 123 είναι ο αριθμός ID του προϊόντος.";
     }
 
     $max_tokens = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
 
-    // 5. Call the selected provider
-    switch ( $provider ) {
-        case 'claude':
-            $result = cacb_call_claude( $client_messages, $api_key, $model, $max_tokens, $system_prompt );
-            break;
-        case 'gemini':
-            $result = cacb_call_gemini( $client_messages, $api_key, $model, $max_tokens, $system_prompt );
-            break;
-        default:
-            $messages = array_merge(
-                [ [ 'role' => 'system', 'content' => $system_prompt ] ],
-                $client_messages
-            );
-            $result = cacb_call_openai( $messages, $api_key, $model, $max_tokens );
-            break;
+    // Tool definitions — only when WooCommerce is active
+    $tools = function_exists( 'wc_get_products' ) ? cacb_get_tool_definitions() : [];
+
+    // 5. Call provider
+    if ( 'claude' === $provider ) {
+        $result = cacb_call_claude( $client_messages, $api_key, $model, $max_tokens, $system_prompt, $tools );
+    } else {
+        $result = cacb_call_openai( $client_messages, $api_key, $model, $max_tokens, $system_prompt, $tools );
     }
 
     if ( is_wp_error( $result ) ) {
@@ -311,19 +307,40 @@ function cacb_handle_chat( WP_REST_Request $request ) {
 }
 
 // ── Provider: OpenAI ──────────────────────────────────────────────────────────
-function cacb_call_openai( array $messages, string $api_key, string $model, int $max_tokens ) {
+function cacb_call_openai( array $client_messages, string $api_key, string $model, int $max_tokens, string $system_prompt, array $tools = [] ) {
+    $messages = array_merge(
+        [ [ 'role' => 'system', 'content' => $system_prompt ] ],
+        $client_messages
+    );
+
+    $payload = [
+        'model'       => $model,
+        'messages'    => $messages,
+        'max_tokens'  => $max_tokens,
+        'temperature' => 0.7,
+    ];
+
+    if ( ! empty( $tools ) ) {
+        $payload['tools'] = [ [
+            'type'     => 'function',
+            'function' => [
+                'name'        => $tools['name'],
+                'description' => $tools['description'],
+                'parameters'  => $tools['parameters'],
+            ],
+        ] ];
+        $payload['tool_choice'] = 'auto';
+    }
+
+    $headers = [
+        'Authorization' => 'Bearer ' . $api_key,
+        'Content-Type'  => 'application/json',
+    ];
+
     $response = wp_remote_post( 'https://api.openai.com/v1/chat/completions', [
         'timeout' => 30,
-        'headers' => [
-            'Authorization' => 'Bearer ' . $api_key,
-            'Content-Type'  => 'application/json',
-        ],
-        'body' => wp_json_encode( [
-            'model'       => $model,
-            'messages'    => $messages,
-            'max_tokens'  => $max_tokens,
-            'temperature' => 0.7,
-        ] ),
+        'headers' => $headers,
+        'body'    => wp_json_encode( $payload ),
     ] );
 
     if ( is_wp_error( $response ) ) {
@@ -340,7 +357,50 @@ function cacb_call_openai( array $messages, string $api_key, string $model, int 
         return new WP_Error( 'openai_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
-    $reply = $body['choices'][0]['message']['content'] ?? '';
+    $choice      = $body['choices'][0] ?? [];
+    $finish      = $choice['finish_reason'] ?? '';
+    $asst_msg    = $choice['message'] ?? [];
+
+    // ── Tool call: execute and make second request ────────────────────────────
+    if ( 'tool_calls' === $finish && ! empty( $asst_msg['tool_calls'] ) ) {
+        $tool_call   = $asst_msg['tool_calls'][0];
+        $tool_args   = json_decode( $tool_call['function']['arguments'] ?? '{}', true ) ?: [];
+        $tool_result = cacb_execute_search_products( $tool_args );
+
+        // Append assistant turn (with tool_calls) + tool result
+        $messages[] = $asst_msg;
+        $messages[] = [
+            'role'         => 'tool',
+            'tool_call_id' => $tool_call['id'],
+            'content'      => $tool_result,
+        ];
+
+        $response2 = wp_remote_post( 'https://api.openai.com/v1/chat/completions', [
+            'timeout' => 30,
+            'headers' => $headers,
+            'body'    => wp_json_encode( [
+                'model'       => $model,
+                'messages'    => $messages,
+                'max_tokens'  => $max_tokens,
+                'temperature' => 0.7,
+            ] ),
+        ] );
+
+        if ( is_wp_error( $response2 ) ) {
+            error_log( '[CACB] OpenAI connection error (2nd call): ' . $response2->get_error_message() );
+            return new WP_Error( 'openai_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+        }
+
+        $body2 = json_decode( wp_remote_retrieve_body( $response2 ), true );
+        $reply = $body2['choices'][0]['message']['content'] ?? '';
+        if ( empty( $reply ) ) {
+            return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+        }
+        return $reply;
+    }
+
+    // ── Direct answer (no tool call) ──────────────────────────────────────────
+    $reply = $asst_msg['content'] ?? '';
     if ( empty( $reply ) ) {
         return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
@@ -348,24 +408,35 @@ function cacb_call_openai( array $messages, string $api_key, string $model, int 
 }
 
 // ── Provider: Anthropic Claude ────────────────────────────────────────────────
-function cacb_call_claude( array $client_messages, string $api_key, string $model, int $max_tokens, string $system_prompt ) {
+function cacb_call_claude( array $client_messages, string $api_key, string $model, int $max_tokens, string $system_prompt, array $tools = [] ) {
     $payload = [
         'model'      => $model,
         'max_tokens' => $max_tokens,
         'messages'   => $client_messages,
     ];
+
     if ( ! empty( $system_prompt ) ) {
         $payload['system'] = $system_prompt;
     }
 
+    if ( ! empty( $tools ) ) {
+        $payload['tools'] = [ [
+            'name'         => $tools['name'],
+            'description'  => $tools['description'],
+            'input_schema' => $tools['parameters'],
+        ] ];
+    }
+
+    $headers = [
+        'x-api-key'         => $api_key,
+        'anthropic-version' => '2023-06-01',
+        'Content-Type'      => 'application/json',
+    ];
+
     $response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
         'timeout' => 30,
-        'headers' => [
-            'x-api-key'         => $api_key,
-            'anthropic-version' => '2023-06-01',
-            'Content-Type'      => 'application/json',
-        ],
-        'body' => wp_json_encode( $payload ),
+        'headers' => $headers,
+        'body'    => wp_json_encode( $payload ),
     ] );
 
     if ( is_wp_error( $response ) ) {
@@ -382,68 +453,61 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
         return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
 
+    // ── Tool use: execute and make second request ─────────────────────────────
+    if ( 'tool_use' === ( $body['stop_reason'] ?? '' ) ) {
+        $tool_use = null;
+        foreach ( ( $body['content'] ?? [] ) as $block ) {
+            if ( 'tool_use' === ( $block['type'] ?? '' ) ) {
+                $tool_use = $block;
+                break;
+            }
+        }
+
+        if ( $tool_use ) {
+            $tool_args   = $tool_use['input'] ?? [];
+            $tool_result = cacb_execute_search_products( $tool_args );
+
+            // Append assistant turn + tool result as user message
+            $messages   = $client_messages;
+            $messages[] = [ 'role' => 'assistant', 'content' => $body['content'] ];
+            $messages[] = [
+                'role'    => 'user',
+                'content' => [ [
+                    'type'        => 'tool_result',
+                    'tool_use_id' => $tool_use['id'],
+                    'content'     => $tool_result,
+                ] ],
+            ];
+
+            $response2 = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
+                'timeout' => 30,
+                'headers' => $headers,
+                'body'    => wp_json_encode( [
+                    'model'      => $model,
+                    'max_tokens' => $max_tokens,
+                    'system'     => $system_prompt,
+                    'messages'   => $messages,
+                ] ),
+            ] );
+
+            if ( is_wp_error( $response2 ) ) {
+                error_log( '[CACB] Claude connection error (2nd call): ' . $response2->get_error_message() );
+                return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+            }
+
+            $body2 = json_decode( wp_remote_retrieve_body( $response2 ), true );
+            $reply = $body2['content'][0]['text'] ?? '';
+            if ( empty( $reply ) ) {
+                return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+            }
+            return $reply;
+        }
+    }
+
+    // ── Direct answer (no tool use) ───────────────────────────────────────────
     $reply = $body['content'][0]['text'] ?? '';
     if ( empty( $reply ) ) {
         return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
     return $reply;
 }
-
-// ── Provider: Google Gemini ───────────────────────────────────────────────────
-function cacb_call_gemini( array $client_messages, string $api_key, string $model, int $max_tokens, string $system_prompt ) {
-    // Map roles: Gemini uses "user" and "model" (not "assistant")
-    $contents = [];
-    foreach ( $client_messages as $msg ) {
-        $contents[] = [
-            'role'  => $msg['role'] === 'assistant' ? 'model' : 'user',
-            'parts' => [ [ 'text' => $msg['content'] ] ],
-        ];
-    }
-
-    $payload = [
-        'contents'         => $contents,
-        'generationConfig' => [
-            'maxOutputTokens' => $max_tokens,
-            'temperature'     => 0.7,
-        ],
-    ];
-
-    if ( ! empty( $system_prompt ) ) {
-        $payload['system_instruction'] = [
-            'parts' => [ [ 'text' => $system_prompt ] ],
-        ];
-    }
-
-    $url = add_query_arg(
-        'key',
-        $api_key,
-        'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode( $model ) . ':generateContent'
-    );
-
-    $response = wp_remote_post( $url, [
-        'timeout' => 30,
-        'headers' => [ 'Content-Type' => 'application/json' ],
-        'body'    => wp_json_encode( $payload ),
-    ] );
-
-    if ( is_wp_error( $response ) ) {
-        error_log( '[CACB] Gemini connection error: ' . $response->get_error_message() );
-        return new WP_Error( 'gemini_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-    }
-
-    $http_code = wp_remote_retrieve_response_code( $response );
-    $body      = json_decode( wp_remote_retrieve_body( $response ), true );
-
-    if ( $http_code !== 200 ) {
-        $err = $body['error']['message'] ?? 'Unknown Gemini error';
-        error_log( "[CACB] Gemini API error {$http_code}: {$err}" );
-        return new WP_Error( 'gemini_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-    }
-
-    $reply = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
-    if ( empty( $reply ) ) {
-        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-    }
-    return $reply;
-}
-

@@ -1,14 +1,13 @@
 <?php
 /**
- * Capitano AI Chatbot — RAG (Retrieval-Augmented Generation) Engine
+ * Smart AI Chatbot — RAG (Retrieval-Augmented Generation) Engine
  *
- * Handles vector embeddings, semantic indexing of WooCommerce products
- * and WordPress pages, cosine-similarity retrieval, and context injection.
+ * Handles vector embeddings, semantic indexing of WordPress pages/FAQ,
+ * cosine-similarity retrieval, and context injection.
  *
- * Embedding providers:
- *   - OpenAI  → text-embedding-3-small (1 536 dims)  — used when chatbot = OpenAI or Claude*
- *   - Gemini  → text-embedding-004     (768  dims)   — used when chatbot = Gemini
- *   * Claude has no embeddings API → requires a separate OpenAI key (cacb_rag_openai_key)
+ * Embedding provider:
+ *   - OpenAI → text-embedding-3-small (1 536 dims)
+ *     OpenAI provider uses the main API key; Claude uses the dedicated cacb_rag_openai_key.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -81,27 +80,13 @@ function cacb_maybe_migrate_chunks_schema(): void {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Returns the embedding provider based on the active chat provider.
- * 'openai' | 'gemini' | 'none'
+ * Returns the embedding provider: always 'openai' or 'none'.
+ * Claude has no embeddings API — falls back to cacb_rag_openai_key.
  *
- * @return string
+ * @return string 'openai'|'none'
  */
 function cacb_get_embedding_provider(): string {
-    $chat_provider = get_option( 'cacb_provider', 'openai' );
-
-    if ( 'gemini' === $chat_provider ) {
-        $key = cacb_decrypt_key( get_option( 'cacb_gemini_api_key', '' ) );
-        return ! empty( $key ) ? 'gemini' : 'none';
-    }
-
-    if ( 'claude' === $chat_provider ) {
-        // Claude has no embeddings API — fall back to dedicated OpenAI key for RAG
-        $rag_key = cacb_decrypt_key( get_option( 'cacb_rag_openai_key', '' ) );
-        return ! empty( $rag_key ) ? 'openai' : 'none';
-    }
-
-    // OpenAI (default)
-    $key = cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
+    $key = cacb_get_embedding_key();
     return ! empty( $key ) ? 'openai' : 'none';
 }
 
@@ -111,16 +96,10 @@ function cacb_get_embedding_provider(): string {
  * @return string
  */
 function cacb_get_embedding_key(): string {
-    $chat_provider = get_option( 'cacb_provider', 'openai' );
-
-    switch ( $chat_provider ) {
-        case 'gemini':
-            return cacb_decrypt_key( get_option( 'cacb_gemini_api_key', '' ) );
-        case 'claude':
-            return cacb_decrypt_key( get_option( 'cacb_rag_openai_key', '' ) );
-        default: // openai
-            return cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
+    if ( 'claude' === get_option( 'cacb_provider', 'openai' ) ) {
+        return cacb_decrypt_key( get_option( 'cacb_rag_openai_key', '' ) );
     }
+    return cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -144,10 +123,6 @@ function cacb_generate_embedding( string $text ) {
 
     // Truncate to stay within API token limits (~8 000 tokens ≈ 32 000 chars)
     $text = mb_substr( wp_strip_all_tags( $text ), 0, 8000 );
-
-    if ( 'gemini' === $provider ) {
-        return cacb_embed_gemini( $text, $key );
-    }
 
     return cacb_embed_openai( $text, $key );
 }
@@ -189,48 +164,6 @@ function cacb_embed_openai( string $text, string $key ) {
     $vec = $body['data'][0]['embedding'] ?? null;
     if ( ! is_array( $vec ) ) {
         return new WP_Error( 'openai_embed_empty', 'Empty embedding returned.' );
-    }
-
-    return $vec;
-}
-
-/**
- * Google Gemini text-embedding-004 → 768 dimensions.
- *
- * @param  string $text
- * @param  string $key
- * @return float[]|WP_Error
- */
-function cacb_embed_gemini( string $text, string $key ) {
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key='
-        . rawurlencode( $key );
-
-    $response = wp_remote_post( $url, [
-        'timeout' => 30,
-        'headers' => [ 'Content-Type' => 'application/json' ],
-        'body'    => wp_json_encode( [
-            'model'   => 'models/text-embedding-004',
-            'content' => [ 'parts' => [ [ 'text' => $text ] ] ],
-        ] ),
-    ] );
-
-    if ( is_wp_error( $response ) ) {
-        error_log( '[CACB-RAG] Gemini embed connection error: ' . $response->get_error_message() );
-        return $response;
-    }
-
-    $code = wp_remote_retrieve_response_code( $response );
-    $body = json_decode( wp_remote_retrieve_body( $response ), true );
-
-    if ( 200 !== $code ) {
-        $err = $body['error']['message'] ?? "HTTP {$code}";
-        error_log( "[CACB-RAG] Gemini embed error {$code}: {$err}" );
-        return new WP_Error( 'gemini_embed', $err );
-    }
-
-    $vec = $body['embedding']['values'] ?? null;
-    if ( ! is_array( $vec ) ) {
-        return new WP_Error( 'gemini_embed_empty', 'Empty embedding returned.' );
     }
 
     return $vec;
@@ -683,14 +616,9 @@ function cacb_rag_build_context( string $query ): string {
             continue;
         }
 
-        if ( 'product' === $item['type'] && function_exists( 'wc_get_product' ) ) {
-            $product = wc_get_product( $item['id'] );
-            if ( ! $product ) {
-                continue;
-            }
-            // Always use live product data (price/stock can change independently of embedding).
-            // 200-word desc limit keeps the context prompt manageable when top_k products match.
-            $lines[] = '• ' . cacb_product_to_text( $product, 200 ) . ' | ID:' . $item['id'];
+        if ( 'product' === $item['type'] ) {
+            // Products are retrieved via function calling — skip from RAG context.
+            continue;
 
         } elseif ( 'page' === $item['type'] ) {
             // Results are sorted by score DESC; first occurrence of a page_id is the best chunk
