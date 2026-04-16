@@ -1,9 +1,9 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.0**
+**Version 1.4.1**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**.
-Production-ready με **Function Calling** για WooCommerce προϊόντα, **RAG (Retrieval-Augmented Generation)** για FAQ/σελίδες, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
+Production-ready με **Function Calling** για WooCommerce προϊόντα (φιλτράρισμα ανά κατηγορία, χρονιά, ποικιλία, περιοχή, χώρα, γλυκύτητα, τιμή), **RAG** για FAQ/σελίδες, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
 
 ---
 
@@ -44,19 +44,6 @@ define( 'CACB_OPENAI_API_KEY', 'sk-...' );
 
 ```php
 define( 'CACB_CLAUDE_API_KEY', 'sk-ant-...' );
-```
-
-### Google Gemini
-Αποκτά API key από [aistudio.google.com](https://aistudio.google.com).
-
-| Model | Περιγραφή |
-|---|---|
-| `gemini-2.0-flash` | Γρήγορο — προτεινόμενο |
-| `gemini-1.5-pro` | Πιο έξυπνο |
-| `gemini-1.5-flash` | Φθηνότατο |
-
-```php
-define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 ```
 
 ---
@@ -100,7 +87,7 @@ define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 | Στοιχείο | Λεπτομέρεια |
 |---|---|
 | **Πού αποθηκεύονται** | Πίνακας `wp_options` της βάσης δεδομένων WordPress |
-| **Κλειδιά** | `cacb_api_key`, `cacb_claude_api_key`, `cacb_gemini_api_key` |
+| **Κλειδιά** | `cacb_api_key`, `cacb_claude_api_key` |
 | **Μορφή αποθήκευσης** | Κρυπτογραφημένα — prefix `cacb_enc2:` + Base64(nonce + auth_tag + ciphertext) |
 | **Αλγόριθμος** | AES-256-GCM (authenticated encryption — ανιχνεύει παραποίηση) |
 | **Κλειδί κρυπτογράφησης** | SHA-256(AUTH_KEY + SECURE_AUTH_KEY) από το `wp-config.php` |
@@ -173,7 +160,6 @@ define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 |---|---|---|---|---|
 | OpenAI API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
 | Claude API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
-| Gemini API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
 | IP (rate limit) | `wp_options` transient | SHA-256 hash | 1 ώρα | Αυτόματα ή uninstall |
 | IP (logs) | `wp_cacb_logs` | SHA-256 hash | Configurable | Admin UI ή uninstall |
 | Ιστορικό (browser) | `localStorage` | JSON plaintext | Αόριστη | Κουμπί 🗑 στο chat |
@@ -211,7 +197,7 @@ smart-ai-chatbot/
 ├── includes/
 │   ├── settings.php       ← Admin page, WP options, AES-256-GCM encryption
 │   ├── embeddings.php     ← RAG engine: indexing, embeddings, cosine similarity, retrieval
-│   ├── api.php            ← REST endpoints: chat + product card data για OpenAI/Claude/Gemini
+│   ├── api.php            ← REST endpoints: chat (function calling) + product card data για OpenAI/Claude
 │   ├── logs.php           ← DB logs, AJAX handlers, log viewer
 │   └── frontend.php       ← Asset enqueue + chat HTML output
 └── assets/
@@ -239,13 +225,31 @@ smart-ai-chatbot/
 
 ---
 
-## WooCommerce Integration
+## WooCommerce Integration — Function Calling
 
-Αν το WooCommerce είναι ενεργό, μπορείς να ενεργοποιήσεις την αυτόματη ενσωμάτωση προϊόντων στο system prompt:
+Αν το WooCommerce είναι ενεργό, το chatbot αναζητά προϊόντα μέσω **Function Calling** (tool use). Το LLM αποφασίζει πότε και με ποια φίλτρα να τρέξει αναζήτηση — χωρίς να φορτώνεται ο κατάλογος στο prompt.
 
-- Τα προϊόντα φορτώνονται live από το κατάστημα (όνομα, τιμή, SKU, διαθεσιμότητα, κατηγορία)
-- Αποθηκεύονται σε cache 1 ώρα — ανανεώνονται αυτόματα όταν αλλάξει προϊόν
-- Φιλτράρισμα ανά κατηγορία (slugs χωρισμένα με κόμμα)
+### Flow (2-turn)
+1. **1ο API call** — αποστέλλεται μαζί με τον ορισμό του tool `search_products`
+2. Το LLM επιλέγει φίλτρα και επιστρέφει `tool_call`
+3. **`wc_get_products()`** εκτελείται server-side (άμεση PHP κλήση, χωρίς HTTP)
+4. **2ο API call** — τα αποτελέσματα δίνονται πίσω στο LLM για τη φυσική απάντηση
+
+### Διαθέσιμα φίλτρα tool
+
+| Parameter | Πηγή | Παράδειγμα |
+|---|---|---|
+| `category` | WC product categories | "λευκα-κρασια" |
+| `year` | WC attribute `pa_xronia` | "2019" |
+| `grape_variety` | WC attribute `pa_poikilia` | "Ασύρτικο" |
+| `region` | WC attribute `pa_perioxi` | "Σαντορίνη" |
+| `origin` | WC attribute `pa_proeleusi` | "Γαλλία" |
+| `sweetness` | WC attribute `pa_glykytita` | "Ξηρό" |
+| `max_price` | WC price filter | `15` |
+| `min_price` | WC price filter | `10` |
+| `keyword` | WP full-text search (`s=`) | "Gerovassiliou" |
+
+Τα enums (χρονιές, ποικιλίες, περιοχές κλπ) διαβάζονται **δυναμικά** από το WC — ενημερώνονται αυτόματα με κάθε νέο προϊόν.
 
 ---
 
@@ -268,13 +272,12 @@ smart-ai-chatbot/
 | Ακρίβεια απαντήσεων | Μέτρια | Υψηλή |
 | Κόστος indexing | — | ~$0.02 / 1 000 προϊόντα |
 
-### Embedding Providers
+### Embedding Provider
 
 | Chat Provider | Embedding API | Key που χρησιμοποιεί |
 |---|---|---|
 | OpenAI | `text-embedding-3-small` (1 536 dims) | Ίδιο OpenAI key |
-| Gemini | `text-embedding-004` (768 dims) | Ίδιο Gemini key |
-| Claude | `text-embedding-3-small` | Ξεχωριστό OpenAI key (`cacb_rag_openai_key`) |
+| Claude | `text-embedding-3-small` (1 536 dims) | Ξεχωριστό OpenAI key (`cacb_rag_openai_key`) |
 
 > Ο Claude δεν παρέχει Embeddings API. Αν χρησιμοποιείς Claude για chat, χρειάζεσαι ένα επιπλέον OpenAI key αποκλειστικά για embeddings.
 
@@ -286,10 +289,6 @@ smart-ai-chatbot/
 | `cacb_rag_top_k` | `5` | Πόσα σχετικά αποτελέσματα να εισάγει στο prompt |
 | `cacb_rag_index_pages` | `0` | Ευρετηρίαση WordPress pages εκτός από προϊόντα |
 | `cacb_rag_openai_key` | `''` | OpenAI key για embeddings (μόνο για Claude users) |
-
-### Fallback
-
-Αν το RAG είναι ανενεργό ή ο index είναι κενός, το σύστημα επιστρέφει αυτόματα στην παλιά μέθοδο (εισαγωγή όλων των προϊόντων στο prompt).
 
 ### Αρχιτεκτονική DB
 
@@ -311,6 +310,38 @@ wp_cacb_embeddings
 ---
 
 ## Changelog
+
+### v1.4.1 — Attribute-based search + temperature fix
+
+**Attribute filters** (`includes/api.php`)
+- Προσθήκη 5 νέων tool parameters: `year`, `grape_variety`, `region`, `origin`, `sweetness`
+- Χρησιμοποιούν `tax_query` στο `wc_get_products()` αντί για `s=` keyword — ψάχνουν απευθείας στα WC attributes (`pa_xronia`, `pa_poikilia`, `pa_perioxi`, `pa_proeleusi`, `pa_glykytita`)
+- Τα enums διαβάζονται δυναμικά από `get_terms()` — ανανεώνονται αυτόματα
+- Νέα helper `cacb_get_attribute_terms()` για επαναχρησιμοποιήσιμη ανάκτηση attribute terms
+
+**Temperature fix** (`includes/api.php`)
+- Temperature 0.7 → 0.2 για OpenAI και Claude
+- Επίλυση inconsistency: το LLM επέλεγε διαφορετικά tool args για ίδια ερώτηση
+
+---
+
+### v1.4.0 — Function calling για WC προϊόντα, αφαίρεση Gemini
+
+**Function Calling** (`includes/api.php`)
+- Αντικατάσταση RAG-για-προϊόντα με 2-turn function calling flow
+- Tool `search_products` με φίλτρα: `keyword`, `category`, `max_price`, `min_price`
+- `cacb_execute_search_products()` — άμεση PHP κλήση `wc_get_products()`, χωρίς HTTP
+- OpenAI format: `{"type": "function", "function": {...}}` · Claude format: `{"name": ..., "input_schema": ...}`
+- RAG περιορίστηκε αποκλειστικά σε pages/FAQ — τα products skip με `continue`
+
+**Αφαίρεση Gemini** (όλα τα αρχεία)
+- Αφαιρέθηκε από `settings.php`, `api.php`, `embeddings.php`, `logs.php`, `uninstall.php`
+- Αφαιρέθηκε `cacb_embed_gemini()`, Gemini CSS badge, Gemini στο provider filter
+
+**SQL fix** (`includes/logs.php`)
+- Αντικατάσταση interpolated `$wpdb->prepare()` pattern με δύο ξεχωριστά branched queries
+
+---
 
 ### v1.3.0 — Product cards, code cleanup
 

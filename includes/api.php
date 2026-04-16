@@ -115,38 +115,49 @@ function cacb_get_client_ip(): string {
 }
 
 // ── Tool definitions for WooCommerce product search ───────────────────────────
+
+/**
+ * Reads term names from a WC attribute taxonomy.
+ * Returns string[] of names, or [] on failure.
+ */
+function cacb_get_attribute_terms( string $slug ): array {
+    $terms = get_terms( [
+        'taxonomy'   => 'pa_' . $slug,
+        'hide_empty' => true,
+        'fields'     => 'names',
+    ] );
+    return ( ! is_wp_error( $terms ) && ! empty( $terms ) ) ? $terms : [];
+}
+
 function cacb_get_tool_definitions(): array {
     if ( ! function_exists( 'get_terms' ) ) {
         return [];
     }
 
-    // Read all product categories dynamically
-    $terms = get_terms( [
-        'taxonomy'   => 'product_cat',
-        'hide_empty' => true,
-    ] );
-
+    // ── Product categories ────────────────────────────────────────────────────
+    $terms      = get_terms( [ 'taxonomy' => 'product_cat', 'hide_empty' => true ] );
     $cat_labels = [];
     $cat_slugs  = [];
     if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
         foreach ( $terms as $term ) {
-            // Exclude the default "Uncategorized" term
-            if ( 'uncategorized' === $term->slug ) {
-                continue;
-            }
+            if ( 'uncategorized' === $term->slug ) continue;
             $cat_labels[] = $term->name . ' (' . $term->slug . ')';
             $cat_slugs[]  = $term->slug;
         }
     }
 
-    $cat_desc = empty( $cat_labels )
-        ? 'Κατηγορία προϊόντος (slug).'
-        : 'Κατηγορία προϊόντος. Διαθέσιμες: ' . implode( ', ', $cat_labels ) . '. Χρησιμοποίησε το slug.';
+    // ── WC product attributes ─────────────────────────────────────────────────
+    $years      = cacb_get_attribute_terms( 'xronia' );
+    $varieties  = cacb_get_attribute_terms( 'poikilia' );
+    $regions    = cacb_get_attribute_terms( 'perioxi' );
+    $origins    = cacb_get_attribute_terms( 'proeleusi' );
+    $sweetness  = cacb_get_attribute_terms( 'glykytita' );
 
+    // ── Build properties ──────────────────────────────────────────────────────
     $properties = [
         'keyword'   => [
             'type'        => 'string',
-            'description' => 'Λέξη-κλειδί αναζήτησης: ποικιλία σταφυλιού, περιοχή, παραγωγός ή χαρακτηριστικά.',
+            'description' => 'Λέξη-κλειδί ελεύθερης αναζήτησης στον τίτλο/περιγραφή (παραγωγός, σειρά, κλπ).',
         ],
         'max_price' => [
             'type'        => 'number',
@@ -161,14 +172,54 @@ function cacb_get_tool_definitions(): array {
     if ( ! empty( $cat_slugs ) ) {
         $properties['category'] = [
             'type'        => 'string',
-            'description' => $cat_desc,
+            'description' => 'Κατηγορία προϊόντος. Διαθέσιμες: ' . implode( ', ', $cat_labels ) . '. Χρησιμοποίησε το slug.',
             'enum'        => $cat_slugs,
+        ];
+    }
+
+    if ( ! empty( $years ) ) {
+        $properties['year'] = [
+            'type'        => 'string',
+            'description' => 'Χρονιά/Vintage (π.χ. 2019).',
+            'enum'        => $years,
+        ];
+    }
+
+    if ( ! empty( $varieties ) ) {
+        $properties['grape_variety'] = [
+            'type'        => 'string',
+            'description' => 'Ποικιλία σταφυλιού (π.χ. Ασύρτικο, Xinomavro, Chardonnay).',
+            'enum'        => $varieties,
+        ];
+    }
+
+    if ( ! empty( $regions ) ) {
+        $properties['region'] = [
+            'type'        => 'string',
+            'description' => 'Περιοχή παραγωγής (π.χ. Σαντορίνη, Λήμνος, Veneto).',
+            'enum'        => $regions,
+        ];
+    }
+
+    if ( ! empty( $origins ) ) {
+        $properties['origin'] = [
+            'type'        => 'string',
+            'description' => 'Χώρα προέλευσης (π.χ. Ελλάδα, Γαλλία, Ιταλία).',
+            'enum'        => $origins,
+        ];
+    }
+
+    if ( ! empty( $sweetness ) ) {
+        $properties['sweetness'] = [
+            'type'        => 'string',
+            'description' => 'Γλυκύτητα: Ξηρό, Ημίξηρο, Ημίγλυκο, Γλυκό, Brut.',
+            'enum'        => $sweetness,
         ];
     }
 
     return [
         'name'        => 'search_products',
-        'description' => 'Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση.',
+        'description' => 'Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση. Επιστρέφει έως 8 αποτελέσματα.',
         'parameters'  => [
             'type'       => 'object',
             'properties' => $properties,
@@ -203,6 +254,34 @@ function cacb_execute_search_products( array $args ): string {
 
     if ( ! empty( $args['keyword'] ) ) {
         $query_args['s'] = sanitize_text_field( $args['keyword'] );
+    }
+
+    // ── Attribute filters via tax_query ───────────────────────────────────────
+    $tax_query = [];
+
+    $attr_map = [
+        'year'         => 'pa_xronia',
+        'grape_variety'=> 'pa_poikilia',
+        'region'       => 'pa_perioxi',
+        'origin'       => 'pa_proeleusi',
+        'sweetness'    => 'pa_glykytita',
+    ];
+
+    foreach ( $attr_map as $arg_key => $taxonomy ) {
+        if ( ! empty( $args[ $arg_key ] ) ) {
+            $tax_query[] = [
+                'taxonomy' => $taxonomy,
+                'field'    => 'name',
+                'terms'    => [ sanitize_text_field( $args[ $arg_key ] ) ],
+            ];
+        }
+    }
+
+    if ( ! empty( $tax_query ) ) {
+        if ( count( $tax_query ) > 1 ) {
+            $tax_query['relation'] = 'AND';
+        }
+        $query_args['tax_query'] = $tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery
     }
 
     $products = wc_get_products( $query_args );
@@ -277,8 +356,9 @@ function cacb_handle_chat( WP_REST_Request $request ) {
 
     $max_tokens = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
 
-    // Tool definitions — only when WooCommerce is active
-    $tools = function_exists( 'wc_get_products' ) ? cacb_get_tool_definitions() : [];
+    // Tool definitions — only when WooCommerce is active and enabled in settings
+    $wc_active = function_exists( 'wc_get_products' ) && '1' === get_option( 'cacb_wc_enabled', '0' );
+    $tools     = $wc_active ? cacb_get_tool_definitions() : [];
 
     // 5. Call provider
     if ( 'claude' === $provider ) {
@@ -317,7 +397,7 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
         'model'       => $model,
         'messages'    => $messages,
         'max_tokens'  => $max_tokens,
-        'temperature' => 0.7,
+        'temperature' => 0.2,
     ];
 
     if ( ! empty( $tools ) ) {
@@ -382,7 +462,7 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
                 'model'       => $model,
                 'messages'    => $messages,
                 'max_tokens'  => $max_tokens,
-                'temperature' => 0.7,
+                'temperature' => 0.2,
             ] ),
         ] );
 
@@ -410,9 +490,10 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
 // ── Provider: Anthropic Claude ────────────────────────────────────────────────
 function cacb_call_claude( array $client_messages, string $api_key, string $model, int $max_tokens, string $system_prompt, array $tools = [] ) {
     $payload = [
-        'model'      => $model,
-        'max_tokens' => $max_tokens,
-        'messages'   => $client_messages,
+        'model'       => $model,
+        'max_tokens'  => $max_tokens,
+        'temperature' => 0.2,
+        'messages'    => $client_messages,
     ];
 
     if ( ! empty( $system_prompt ) ) {

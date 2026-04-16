@@ -291,7 +291,7 @@ function cacb_settings_page() {
 
                 <!-- ── WooCommerce ── -->
                 <div class="cacb-card">
-                    <h2>🛒 WooCommerce Προϊόντα</h2>
+                    <h2>🛒 WooCommerce — Function Calling</h2>
 
                     <?php if ( ! function_exists( 'wc_get_products' ) ) : ?>
                         <div class="cacb-notice cacb-notice--warn">
@@ -299,55 +299,20 @@ function cacb_settings_page() {
                         </div>
                     <?php else : ?>
 
-                        <label style="display:flex;align-items:center;gap:8px;margin-top:0;">
+                        <p class="description" style="margin-top:0">
+                            <?php esc_html_e( 'Το chatbot αναζητά προϊόντα δυναμικά μέσω Function Calling — φιλτράρει ανά κατηγορία, χρονιά, ποικιλία, περιοχή, χώρα, γλυκύτητα και τιμή απευθείας από τη βάση.', 'smart-ai-chatbot' ); ?>
+                        </p>
+
+                        <label style="display:flex;align-items:center;gap:8px;margin-top:8px">
                             <input type="hidden"   name="cacb_wc_enabled" value="0">
                             <input type="checkbox"
                                    id="cacb_wc_enabled"
                                    name="cacb_wc_enabled"
                                    value="1"
                                    <?php checked( cacb_get( 'cacb_wc_enabled', '0' ), '1' ); ?> />
-                            <?php esc_html_e( 'Ενεργοποίηση — προσθέτει live προϊόντα στο system prompt', 'smart-ai-chatbot' ); ?>
+                            <?php esc_html_e( 'Ενεργοποίηση αναζήτησης προϊόντων', 'smart-ai-chatbot' ); ?>
                         </label>
-
-                        <div id="cacb-wc-options" <?php echo cacb_get( 'cacb_wc_enabled' ) ? '' : 'style="opacity:.45;pointer-events:none"'; ?>>
-
-                            <label><?php esc_html_e( 'Μέγιστος αριθμός προϊόντων', 'smart-ai-chatbot' ); ?></label>
-                            <input type="number"
-                                   name="cacb_wc_limit"
-                                   value="<?php echo esc_attr( cacb_get( 'cacb_wc_limit', 50 ) ); ?>"
-                                   min="10" max="200" class="small-text" />
-                            <p class="description"><?php esc_html_e( 'Προτεινόμενο: 50. Περισσότερα = περισσότερα tokens.', 'smart-ai-chatbot' ); ?></p>
-
-                            <label><?php esc_html_e( 'Φιλτράρισμα κατηγοριών (προαιρετικό)', 'smart-ai-chatbot' ); ?></label>
-                            <input type="text"
-                                   name="cacb_wc_categories"
-                                   value="<?php echo esc_attr( cacb_get( 'cacb_wc_categories' ) ); ?>"
-                                   class="regular-text"
-                                   placeholder="krasia, meli, elaiolado" />
-                            <p class="description"><?php esc_html_e( 'Slugs κατηγοριών χωρισμένα με κόμμα. Άδειο = όλες οι κατηγορίες.', 'smart-ai-chatbot' ); ?></p>
-
-                            <?php
-                            $cache_exists = ( false !== get_transient( 'cacb_wc_products_cache' ) );
-                            if ( $cache_exists ) :
-                            ?>
-                            <div class="cacb-notice cacb-notice--info">
-                                ✅ <?php esc_html_e( 'Product cache ενεργό (1 ώρα). Ανανεώνεται αυτόματα όταν αλλάξει προϊόν.', 'smart-ai-chatbot' ); ?>
-                                <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'cacb_clear_cache', '1' ), 'cacb_clear_cache' ) ); ?>"><?php esc_html_e( 'Καθαρισμός τώρα', 'smart-ai-chatbot' ); ?></a>
-                            </div>
-                            <?php else : ?>
-                            <div class="cacb-notice cacb-notice--info">
-                                ℹ️ <?php esc_html_e( 'Cache θα δημιουργηθεί στο επόμενο chat request.', 'smart-ai-chatbot' ); ?>
-                            </div>
-                            <?php endif; ?>
-
-                        </div><!-- #cacb-wc-options -->
-
-                        <script>
-                        document.getElementById('cacb_wc_enabled').addEventListener('change', function() {
-                            document.getElementById('cacb-wc-options').style.opacity = this.checked ? '1' : '.45';
-                            document.getElementById('cacb-wc-options').style.pointerEvents = this.checked ? '' : 'none';
-                        });
-                        </script>
+                        <p class="description"><?php esc_html_e( 'Απενεργοποίησε αν θέλεις το chatbot να απαντά μόνο βάσει System Prompt και RAG.', 'smart-ai-chatbot' ); ?></p>
 
                     <?php endif; ?>
                 </div>
@@ -672,9 +637,9 @@ function cacb_render_rag_page(): void {
 
         <!-- ── RAG Settings form ── -->
         <div class="cacb-card cacb-card--full">
-            <h2 style="margin-top:0">🧠 RAG — Semantic Search (Retrieval-Augmented Generation)</h2>
+            <h2 style="margin-top:0">🧠 RAG — Semantic Search για Σελίδες & FAQ</h2>
             <p class="description">
-                <?php esc_html_e( 'Αντί να στέλνεις όλα τα προϊόντα στο AI, το σύστημα βρίσκει σημαντικά μόνο τα σχετικά με κάθε ερώτηση. Λιγότερα tokens, καλύτερες απαντήσεις, χωρίς όριο προϊόντων.', 'smart-ai-chatbot' ); ?>
+                <?php esc_html_e( 'Ευρετηριάζει WordPress σελίδες (FAQ, πολιτική αποστολής, κ.λπ.) με vector embeddings. Για κάθε ερώτηση βρίσκει τα πιο σχετικά τμήματα και τα εισάγει στο system prompt. Τα προϊόντα αναζητούνται ξεχωριστά μέσω Function Calling.', 'smart-ai-chatbot' ); ?>
             </p>
 
             <form method="post" action="options.php">
@@ -687,7 +652,7 @@ function cacb_render_rag_page(): void {
                            <?php checked( $rag_enabled, '1' ); ?> />
                     <?php esc_html_e( 'Ενεργοποίηση RAG (Semantic Search)', 'smart-ai-chatbot' ); ?>
                 </label>
-                <p class="description" style="margin-left:28px"><?php esc_html_e( 'Χρησιμοποιεί vector embeddings αντί για απλή λίστα προϊόντων.', 'smart-ai-chatbot' ); ?></p>
+                <p class="description" style="margin-left:28px"><?php esc_html_e( 'Βρίσκει τα πιο σχετικά chunks από σελίδες/FAQ για κάθε ερώτηση χρήστη.', 'smart-ai-chatbot' ); ?></p>
 
                 <div id="cacb-rag-options" <?php echo '1' === $rag_enabled ? '' : 'style="opacity:.45;pointer-events:none"'; ?>>
 
@@ -756,13 +721,8 @@ function cacb_render_rag_page(): void {
             </div>
 
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
-                <?php if ( function_exists( 'wc_get_products' ) ) : ?>
-                <button type="button" id="cacb-rag-index-products" class="button button-primary">
-                    ⚡ <?php esc_html_e( 'Index Προϊόντων', 'smart-ai-chatbot' ); ?>
-                </button>
-                <?php endif; ?>
-                <button type="button" id="cacb-rag-index-pages" class="button button-secondary">
-                    📄 <?php esc_html_e( 'Index Σελίδων', 'smart-ai-chatbot' ); ?>
+                <button type="button" id="cacb-rag-index-pages" class="button button-primary">
+                    📄 <?php esc_html_e( 'Index Σελίδων / FAQ', 'smart-ai-chatbot' ); ?>
                 </button>
                 <button type="button" id="cacb-rag-clear" class="button cacb-btn-danger">
                     🗑 <?php esc_html_e( 'Καθαρισμός Index', 'smart-ai-chatbot' ); ?>
