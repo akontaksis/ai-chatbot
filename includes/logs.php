@@ -84,38 +84,6 @@ function cacb_prune_logs(): void {
     ) );
 }
 
-// ── AJAX: JS sends the full exchange after streaming completes ─────────────────
-add_action( 'wp_ajax_nopriv_cacb_log', 'cacb_ajax_log_exchange' );
-add_action( 'wp_ajax_cacb_log',        'cacb_ajax_log_exchange' );
-function cacb_ajax_log_exchange(): void {
-    $nonce = sanitize_text_field( wp_unslash( $_POST['nonce'] ?? '' ) );
-    if ( ! wp_verify_nonce( $nonce, 'cacb_chat_nonce' ) ) wp_die();
-
-    $user_msg  = sanitize_textarea_field( wp_unslash( $_POST['user_msg']  ?? '' ) );
-    $bot_reply = sanitize_textarea_field( wp_unslash( $_POST['bot_reply'] ?? '' ) );
-
-    if ( ! empty( $user_msg ) && ! empty( $bot_reply ) ) {
-        $provider = sanitize_text_field( get_option( 'cacb_provider', 'openai' ) );
-        switch ( $provider ) {
-            case 'claude': $model = sanitize_text_field( get_option( 'cacb_claude_model', 'claude-sonnet-4-6' ) ); break;
-            case 'gemini': $model = sanitize_text_field( get_option( 'cacb_gemini_model', 'gemini-2.0-flash' ) );  break;
-            default:       $model = sanitize_text_field( get_option( 'cacb_model', 'gpt-4o-mini' ) );              break;
-        }
-
-        // Streaming: retrieve RAG context stored by cacb_handle_stream() before response was sent
-        $rag_context = '';
-        if ( get_option( 'cacb_debug_mode', '0' ) === '1' ) {
-            $ctx_key     = 'cacb_rag_ctx_' . cacb_log_ip_hash();
-            $rag_context = (string) ( get_transient( $ctx_key ) ?: '' );
-            delete_transient( $ctx_key );
-        }
-
-        cacb_log_exchange( $provider, $model, $user_msg, $bot_reply, $rag_context );
-    }
-
-    wp_send_json_success();
-}
-
 // ── AJAX: wipe a stored API key ───────────────────────────────────────────────
 add_action( 'wp_ajax_cacb_delete_key', 'cacb_ajax_delete_key' );
 function cacb_ajax_delete_key(): void {

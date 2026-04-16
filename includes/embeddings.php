@@ -690,7 +690,7 @@ function cacb_rag_build_context( string $query ): string {
             }
             // Always use live product data (price/stock can change independently of embedding).
             // 200-word desc limit keeps the context prompt manageable when top_k products match.
-            $lines[] = '• ' . cacb_product_to_text( $product, 200 );
+            $lines[] = '• ' . cacb_product_to_text( $product, 200 ) . ' | ID:' . $item['id'];
 
         } elseif ( 'page' === $item['type'] ) {
             // Results are sorted by score DESC; first occurrence of a page_id is the best chunk

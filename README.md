@@ -1,9 +1,9 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.2.6**
+**Version 1.3.0**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)**, **Anthropic (Claude)** και **Google (Gemini)**.
-Production-ready με streaming απαντήσεις, **RAG (Retrieval-Augmented Generation)**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
+Production-ready με **RAG (Retrieval-Augmented Generation)**, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
 
 ---
 
@@ -158,8 +158,7 @@ define( 'CACB_GEMINI_API_KEY', 'AIza...' );
 | **Πίνακας** | `wp_cacb_logs` (δημιουργείται αυτόματα κατά την ενεργοποίηση) |
 | **Πεδία** | `id`, `created_at`, `provider`, `model`, `user_msg`, `bot_reply`, `ip_hash` |
 | **Τι καταγράφεται** | Τελευταίο ζεύγος ερώτησης–απάντησης ανά request (όχι ολόκληρο το ιστορικό) |
-| **Πότε γράφεται** | Μετά από κάθε επιτυχή απάντηση AI (REST και streaming) |
-| **Streaming logging** | Ο browser στέλνει το πλήρες ζεύγος μετά το τέλος του stream (fire-and-forget) |
+| **Πότε γράφεται** | Μετά από κάθε επιτυχή απάντηση AI |
 | **Ενεργοποίηση** | Settings → AI Chatbot → Logging — μπορεί να απενεργοποιηθεί |
 | **Retention** | Ρυθμιζόμενο (default: 30 ημέρες) — αυτόματη διαγραφή παλαιών εγγραφών |
 | **Διαγραφή από admin** | Settings → Logs → "Διαγραφή όλων" → `TRUNCATE TABLE wp_cacb_logs` |
@@ -212,20 +211,20 @@ smart-ai-chatbot/
 ├── includes/
 │   ├── settings.php       ← Admin page, WP options, AES-256-GCM encryption
 │   ├── embeddings.php     ← RAG engine: indexing, embeddings, cosine similarity, retrieval
-│   ├── api.php            ← REST endpoint + streaming (SSE) για OpenAI/Claude/Gemini
+│   ├── api.php            ← REST endpoints: chat + product card data για OpenAI/Claude/Gemini
 │   ├── logs.php           ← DB logs, AJAX handlers, log viewer
 │   └── frontend.php       ← Asset enqueue + chat HTML output
 └── assets/
-    ├── chat.js            ← UI logic, SSE streaming, localStorage history
+    ├── chat.js            ← UI logic, product cards, localStorage history
     ├── admin.js           ← Admin panel JS: provider highlight, key test/delete, RAG index
-    └── chat.css           ← Styles, animations
+    └── chat.css           ← Styles, animations, product card UI
 ```
 
-### Streaming (SSE)
+### REST API
 
-Οι απαντήσεις των AI στέλνονται σε πραγματικό χρόνο μέσω Server-Sent Events:
-- **Server**: `admin-ajax.php` → cURL με `CURLOPT_WRITEFUNCTION` → forward chunks στον browser
-- **Client**: `fetch` + `ReadableStream` + `TextDecoder` → προοδευτική εμφάνιση κειμένου
+Όλες οι επικοινωνίες γίνονται μέσω WP REST API:
+- **`POST /cacb/v1/chat`** — Αποστολή μηνύματος, λήψη απάντησης AI
+- **`GET /cacb/v1/product/{id}`** — Δεδομένα προϊόντος για product cards (όνομα, τιμή, εικόνα, URL)
 
 ---
 
@@ -313,6 +312,20 @@ wp_cacb_embeddings
 
 ## Changelog
 
+### v1.3.0 — Product cards, code cleanup
+
+**Product cards** (`includes/api.php`, `assets/chat.js`, `assets/chat.css`)
+- Νέο REST endpoint `GET /cacb/v1/product/{id}` — επιστρέφει όνομα, τιμή, εικόνα, URL
+- Το RAG context περιέχει πλέον `ID:` για κάθε προϊόν — το LLM εισάγει `[PRODUCT:ID]` markers στην απάντηση
+- Το frontend ανιχνεύει τα markers, κάνει async fetch, και εμφανίζει product cards (εικόνα, τιμή, sale price με strikethrough, κουμπί "Προβολή Προϊόντος")
+
+**Αφαίρεση streaming** (`includes/api.php`, `assets/chat.js`)
+- Αφαιρέθηκε ο SSE/streaming handler — όλες οι απαντήσεις γίνονται μέσω REST API (`POST /cacb/v1/chat`)
+- Απλοποίηση κώδικα: ~270 γραμμές streaming code αφαιρέθηκαν
+- Logging γίνεται πλέον αποκλειστικά server-side (αφαιρέθηκε το `cacb_ajax_log_exchange`)
+
+---
+
 ### v1.2.6 — Page chunking, richer RAG context, Markdown rendering
 
 **Page chunking** (`includes/embeddings.php`)
@@ -389,7 +402,6 @@ wp_cacb_embeddings
 ### v1.1.0 — Initial release
 
 - OpenAI GPT, Anthropic Claude, Google Gemini support
-- Streaming (SSE) απαντήσεις
 - AES-256-GCM κρυπτογράφηση API keys
 - Rate limiting, history limit, logging
 - WooCommerce product context integration

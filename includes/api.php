@@ -62,14 +62,15 @@ function cacb_get_wc_product_context(): string {
         }
         $cats = $cat_names ? ' [' . implode( ', ', $cat_names ) . ']' : '';
 
-        // Format: Name | SKU | Price | Stock | Category | Description
+        // Format: Name | SKU | Price | Stock | Category | ID | Description
         $line = sprintf(
-            '• %s%s | SKU: %s | %s€ | %s%s',
+            '• %s%s | SKU: %s | %s€ | %s | ID:%d%s',
             $name,
             $cats,
             $sku ?: 'N/A',
             $price ?: 'N/A',
             $stock,
+            $product->get_id(),
             $desc
         );
 
@@ -93,13 +94,13 @@ function cacb_clear_product_cache() {
     delete_transient( 'cacb_wc_products_cache' );
 }
 
-// ── Register REST route ───────────────────────────────────────────────────────
+// ── Register REST routes ──────────────────────────────────────────────────────
 add_action( 'rest_api_init', 'cacb_register_routes' );
 function cacb_register_routes() {
     register_rest_route( 'cacb/v1', '/chat', [
-        'methods'             => WP_REST_Server::CREATABLE, // POST only
+        'methods'             => WP_REST_Server::CREATABLE,
         'callback'            => 'cacb_handle_chat',
-        'permission_callback' => '__return_true',           // Public endpoint — secured via nonce below
+        'permission_callback' => '__return_true',
         'args'                => [
             'messages' => [
                 'required'          => true,
@@ -111,6 +112,37 @@ function cacb_register_routes() {
                 'type'     => 'string',
             ],
         ],
+    ] );
+
+    register_rest_route( 'cacb/v1', '/product/(?P<id>\d+)', [
+        'methods'             => WP_REST_Server::READABLE,
+        'callback'            => 'cacb_rest_get_product',
+        'permission_callback' => '__return_true',
+        'args'                => [
+            'id' => [ 'required' => true, 'type' => 'integer', 'minimum' => 1 ],
+        ],
+    ] );
+}
+
+// ── Product card data endpoint ────────────────────────────────────────────────
+function cacb_rest_get_product( WP_REST_Request $request ) {
+    if ( ! function_exists( 'wc_get_product' ) ) {
+        return new WP_Error( 'no_wc', '', [ 'status' => 404 ] );
+    }
+    $id      = (int) $request->get_param( 'id' );
+    $product = wc_get_product( $id );
+    if ( ! $product || ! $product->is_visible() ) {
+        return new WP_Error( 'not_found', '', [ 'status' => 404 ] );
+    }
+    $image_id  = $product->get_image_id();
+    $image_url = $image_id ? wp_get_attachment_image_url( $image_id, 'woocommerce_thumbnail' ) : '';
+    return rest_ensure_response( [
+        'name'          => $product->get_name(),
+        'price'         => wc_format_decimal( $product->get_price(), 2 ),
+        'regular_price' => wc_format_decimal( $product->get_regular_price(), 2 ),
+        'sale_price'    => $product->is_on_sale() ? wc_format_decimal( $product->get_sale_price(), 2 ) : '',
+        'image'         => $image_url ?: '',
+        'url'           => get_permalink( $id ),
     ] );
 }
 
@@ -234,6 +266,12 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     $system_prompt = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
     $rag_context   = cacb_get_smart_context( $client_messages );
     $system_prompt .= $rag_context;
+
+    // Product card instruction — only when context contains products with IDs
+    if ( function_exists( 'wc_get_product' ) && strpos( $rag_context, ' | ID:' ) !== false ) {
+        $system_prompt .= "\n\nΌταν αναφέρεις συγκεκριμένο προϊόν, πρόσθεσε [PRODUCT:ID] αμέσως μετά το όνομά του (ID από τα στοιχεία).";
+    }
+
     $max_tokens = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
 
     // 5. Call the selected provider
@@ -409,277 +447,3 @@ function cacb_call_gemini( array $client_messages, string $api_key, string $mode
     return $reply;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// STREAMING (SSE) — admin-ajax endpoint, one chunk at a time via cURL
-// ═══════════════════════════════════════════════════════════════════════════════
-
-add_action( 'wp_ajax_nopriv_cacb_stream', 'cacb_handle_stream' );
-add_action( 'wp_ajax_cacb_stream',        'cacb_handle_stream' );
-
-function cacb_handle_stream(): void {
-
-    // 1. SSE headers first — must be sent before ANY output so errors are also SSE-formatted
-    while ( ob_get_level() > 0 ) {
-        ob_end_clean();
-    }
-    header( 'Content-Type: text/event-stream; charset=UTF-8' );
-    header( 'Cache-Control: no-cache, no-store' );
-    header( 'X-Accel-Buffering: no' ); // Disable nginx buffering
-
-    // 2. Nonce
-    $nonce = sanitize_text_field( wp_unslash( $_POST['nonce'] ?? '' ) );
-    if ( ! wp_verify_nonce( $nonce, 'cacb_chat_nonce' ) ) {
-        cacb_sse_error( __( 'Security check failed.', 'smart-ai-chatbot' ) );
-        wp_die();
-    }
-
-    // 3. Rate limit
-    if ( ! cacb_check_rate_limit() ) {
-        cacb_sse_error( __( 'Έχετε φτάσει το όριο μηνυμάτων. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ) );
-        wp_die();
-    }
-
-    // 4. Messages
-    $raw      = json_decode( wp_unslash( $_POST['messages'] ?? '[]' ), true );
-    $messages = cacb_sanitize_messages( is_array( $raw ) ? $raw : [] );
-    if ( empty( $messages ) ) {
-        cacb_sse_error( __( 'No messages provided.', 'smart-ai-chatbot' ) );
-        wp_die();
-    }
-
-    // 5. Provider + key + model
-    $provider = sanitize_text_field( get_option( 'cacb_provider', 'openai' ) );
-    switch ( $provider ) {
-        case 'claude':
-            $api_key = defined( 'CACB_CLAUDE_API_KEY' )
-                ? CACB_CLAUDE_API_KEY
-                : cacb_decrypt_key( get_option( 'cacb_claude_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_claude_model', 'claude-sonnet-4-6' ) );
-            break;
-        case 'gemini':
-            $api_key = defined( 'CACB_GEMINI_API_KEY' )
-                ? CACB_GEMINI_API_KEY
-                : cacb_decrypt_key( get_option( 'cacb_gemini_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_gemini_model', 'gemini-2.0-flash' ) );
-            break;
-        default:
-            $provider = 'openai';
-            $api_key  = defined( 'CACB_OPENAI_API_KEY' )
-                ? CACB_OPENAI_API_KEY
-                : cacb_decrypt_key( get_option( 'cacb_api_key', '' ) );
-            $model = sanitize_text_field( get_option( 'cacb_model', 'gpt-4o-mini' ) );
-    }
-
-    if ( empty( $api_key ) ) {
-        cacb_sse_error( __( 'API key not configured.', 'smart-ai-chatbot' ) );
-        wp_die();
-    }
-
-    // 6. Build context
-    $history_limit = max( 2, (int) get_option( 'cacb_history_limit', 10 ) );
-    if ( count( $messages ) > $history_limit ) {
-        $messages = array_slice( $messages, - $history_limit );
-    }
-    $system_prompt  = sanitize_textarea_field( get_option( 'cacb_system_prompt', '' ) );
-    $rag_context    = cacb_get_smart_context( $messages );
-    $system_prompt .= $rag_context;
-    $max_tokens     = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
-
-    // Store RAG context in a short-lived transient so the browser's log AJAX call can retrieve it
-    if ( get_option( 'cacb_debug_mode', '0' ) === '1' && ! empty( $rag_context ) ) {
-        set_transient( 'cacb_rag_ctx_' . cacb_log_ip_hash(), $rag_context, 60 );
-    }
-
-    // 7. Delegate to provider
-    switch ( $provider ) {
-        case 'claude':
-            cacb_stream_claude( $messages, $api_key, $model, $max_tokens, $system_prompt );
-            break;
-        case 'gemini':
-            cacb_stream_gemini( $messages, $api_key, $model, $max_tokens, $system_prompt );
-            break;
-        default:
-            $with_system = array_merge(
-                [ [ 'role' => 'system', 'content' => $system_prompt ] ],
-                $messages
-            );
-            cacb_stream_openai( $with_system, $api_key, $model, $max_tokens );
-    }
-
-    wp_die();
-}
-
-// ── SSE output helpers ────────────────────────────────────────────────────────
-function cacb_sse_chunk( string $text ): void {
-    echo 'data: ' . wp_json_encode( [ 't' => $text ] ) . "\n\n";
-    if ( ob_get_level() > 0 ) ob_flush();
-    flush();
-}
-
-function cacb_sse_done(): void {
-    echo "data: [DONE]\n\n";
-    if ( ob_get_level() > 0 ) ob_flush();
-    flush();
-}
-
-function cacb_sse_error( string $msg ): void {
-    echo 'data: ' . wp_json_encode( [ 'e' => $msg ] ) . "\n\n";
-    if ( ob_get_level() > 0 ) ob_flush();
-    flush();
-    cacb_sse_done();
-}
-
-// ── Streaming: OpenAI ─────────────────────────────────────────────────────────
-function cacb_stream_openai( array $messages, string $api_key, string $model, int $max_tokens ): void {
-    if ( ! function_exists( 'curl_init' ) ) {
-        cacb_sse_error( __( 'cURL extension not available on this server.', 'smart-ai-chatbot' ) );
-        return;
-    }
-
-    $done = false;
-    $ch   = curl_init( 'https://api.openai.com/v1/chat/completions' );
-    curl_setopt_array( $ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => [
-            'Authorization: Bearer ' . $api_key,
-            'Content-Type: application/json',
-        ],
-        CURLOPT_POSTFIELDS     => wp_json_encode( [
-            'model'       => $model,
-            'messages'    => $messages,
-            'max_tokens'  => $max_tokens,
-            'temperature' => 0.7,
-            'stream'      => true,
-        ] ),
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_WRITEFUNCTION  => static function ( $ch, $data ) use ( &$done ): int {
-            if ( $done ) return strlen( $data );
-            foreach ( explode( "\n", $data ) as $line ) {
-                $line = trim( $line );
-                if ( strpos( $line, 'data: ' ) !== 0 ) continue;
-                $payload = substr( $line, 6 );
-                if ( $payload === '[DONE]' ) { $done = true; break; }
-                $json = json_decode( $payload, true );
-                $text = $json['choices'][0]['delta']['content'] ?? '';
-                if ( $text !== '' ) cacb_sse_chunk( $text );
-            }
-            return strlen( $data );
-        },
-    ] );
-    curl_exec( $ch );
-    if ( curl_errno( $ch ) ) {
-        error_log( '[CACB] OpenAI stream error: ' . curl_error( $ch ) );
-    }
-    curl_close( $ch );
-    cacb_sse_done();
-}
-
-// ── Streaming: Anthropic Claude ───────────────────────────────────────────────
-function cacb_stream_claude( array $messages, string $api_key, string $model, int $max_tokens, string $system_prompt ): void {
-    if ( ! function_exists( 'curl_init' ) ) {
-        cacb_sse_error( __( 'cURL extension not available on this server.', 'smart-ai-chatbot' ) );
-        return;
-    }
-
-    $payload = [
-        'model'      => $model,
-        'max_tokens' => $max_tokens,
-        'messages'   => $messages,
-        'stream'     => true,
-    ];
-    if ( ! empty( $system_prompt ) ) {
-        $payload['system'] = $system_prompt;
-    }
-
-    $ch = curl_init( 'https://api.anthropic.com/v1/messages' );
-    curl_setopt_array( $ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => [
-            'x-api-key: ' . $api_key,
-            'anthropic-version: 2023-06-01',
-            'Content-Type: application/json',
-        ],
-        CURLOPT_POSTFIELDS     => wp_json_encode( $payload ),
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_WRITEFUNCTION  => static function ( $ch, $data ): int {
-            foreach ( explode( "\n", $data ) as $line ) {
-                $line = trim( $line );
-                if ( strpos( $line, 'data: ' ) !== 0 ) continue;
-                $json = json_decode( substr( $line, 6 ), true );
-                if ( ! is_array( $json ) ) continue;
-                // Claude streams: content_block_delta carries the text
-                if ( ( $json['type'] ?? '' ) === 'content_block_delta' ) {
-                    $text = $json['delta']['text'] ?? '';
-                    if ( $text !== '' ) cacb_sse_chunk( $text );
-                }
-            }
-            return strlen( $data );
-        },
-    ] );
-    curl_exec( $ch );
-    if ( curl_errno( $ch ) ) {
-        error_log( '[CACB] Claude stream error: ' . curl_error( $ch ) );
-    }
-    curl_close( $ch );
-    cacb_sse_done();
-}
-
-// ── Streaming: Google Gemini ──────────────────────────────────────────────────
-function cacb_stream_gemini( array $messages, string $api_key, string $model, int $max_tokens, string $system_prompt ): void {
-    if ( ! function_exists( 'curl_init' ) ) {
-        cacb_sse_error( __( 'cURL extension not available on this server.', 'smart-ai-chatbot' ) );
-        return;
-    }
-
-    $contents = [];
-    foreach ( $messages as $msg ) {
-        $contents[] = [
-            'role'  => $msg['role'] === 'assistant' ? 'model' : 'user',
-            'parts' => [ [ 'text' => $msg['content'] ] ],
-        ];
-    }
-
-    $payload = [
-        'contents'         => $contents,
-        'generationConfig' => [
-            'maxOutputTokens' => $max_tokens,
-            'temperature'     => 0.7,
-        ],
-    ];
-    if ( ! empty( $system_prompt ) ) {
-        $payload['system_instruction'] = [ 'parts' => [ [ 'text' => $system_prompt ] ] ];
-    }
-
-    // alt=sse makes Gemini return Server-Sent Events format
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-        . rawurlencode( $model )
-        . ':streamGenerateContent?alt=sse&key=' . rawurlencode( $api_key );
-
-    $ch = curl_init( $url );
-    curl_setopt_array( $ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => [ 'Content-Type: application/json' ],
-        CURLOPT_POSTFIELDS     => wp_json_encode( $payload ),
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_WRITEFUNCTION  => static function ( $ch, $data ): int {
-            foreach ( explode( "\n", $data ) as $line ) {
-                $line = trim( $line );
-                if ( strpos( $line, 'data: ' ) !== 0 ) continue;
-                $json = json_decode( substr( $line, 6 ), true );
-                if ( ! is_array( $json ) ) continue;
-                $text = $json['candidates'][0]['content']['parts'][0]['text'] ?? '';
-                if ( $text !== '' ) cacb_sse_chunk( $text );
-            }
-            return strlen( $data );
-        },
-    ] );
-    curl_exec( $ch );
-    if ( curl_errno( $ch ) ) {
-        error_log( '[CACB] Gemini stream error: ' . curl_error( $ch ) );
-    }
-    curl_close( $ch );
-    cacb_sse_done();
-}

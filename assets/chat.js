@@ -1,6 +1,6 @@
 /**
  * Capitano AI Chatbot — Frontend JS
- * Handles UI interactions, conversation chatHistory, and API communication.
+ * Handles UI interactions, conversation history, and API communication.
  */
 ( function () {
     'use strict';
@@ -8,43 +8,38 @@
     const cfg = window.cacbConfig || {};
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
-    const wrapper    = document.getElementById( 'cacb-wrapper' );
-    const bubble     = document.getElementById( 'cacb-bubble' );
-    const win        = document.getElementById( 'cacb-window' );
-    const msgList    = document.getElementById( 'cacb-messages' );
-    const typingEl   = document.getElementById( 'cacb-typing' );
-    const inputEl    = document.getElementById( 'cacb-input' );
-    const sendBtn    = document.getElementById( 'cacb-send' );
-    const closeBtn   = document.getElementById( 'cacb-close-btn' );
-    const clearBtn   = document.getElementById( 'cacb-clear-btn' );
-    const iconOpen   = document.getElementById( 'cacb-icon-open' );
-    const iconClose  = document.getElementById( 'cacb-icon-close' );
+    const wrapper   = document.getElementById( 'cacb-wrapper' );
+    const bubble    = document.getElementById( 'cacb-bubble' );
+    const win       = document.getElementById( 'cacb-window' );
+    const msgList   = document.getElementById( 'cacb-messages' );
+    const typingEl  = document.getElementById( 'cacb-typing' );
+    const inputEl   = document.getElementById( 'cacb-input' );
+    const sendBtn   = document.getElementById( 'cacb-send' );
+    const closeBtn  = document.getElementById( 'cacb-close-btn' );
+    const clearBtn  = document.getElementById( 'cacb-clear-btn' );
+    const iconOpen  = document.getElementById( 'cacb-icon-open' );
+    const iconClose = document.getElementById( 'cacb-icon-close' );
 
-    if ( ! wrapper ) return; // Safety guard
+    if ( ! wrapper ) return;
 
     // ── State ─────────────────────────────────────────────────────────────────
     const STORAGE_KEY = 'cacb_chatHistory';
-    let chatHistory       = loadHistory();
-    let isOpen        = false;
-    let isSending     = false;
-    let initialized   = false;
+    let chatHistory = loadHistory();
+    let isOpen      = false;
+    let isSending   = false;
+    let initialized = false;
 
-    // ── History persistence (localStorage) ───────────────────────────────────
+    // ── History persistence ───────────────────────────────────────────────────
     function loadHistory() {
         try {
             const stored = JSON.parse( localStorage.getItem( STORAGE_KEY ) );
-            return Array.isArray( stored ) ? stored : []; // guard against corrupt data
-        } catch {
-            return [];
-        }
+            return Array.isArray( stored ) ? stored : [];
+        } catch { return []; }
     }
 
     function saveHistory() {
-        try {
-            localStorage.setItem( STORAGE_KEY, JSON.stringify( chatHistory ) );
-        } catch {
-            // localStorage unavailable — graceful degradation
-        }
+        try { localStorage.setItem( STORAGE_KEY, JSON.stringify( chatHistory ) ); }
+        catch {} // graceful degradation
     }
 
     // ── Open / close ──────────────────────────────────────────────────────────
@@ -57,16 +52,18 @@
 
         if ( ! initialized ) {
             initialized = true;
-            // Show welcome message if no chatHistory
             if ( chatHistory.length === 0 ) {
                 appendMessage( 'bot', cfg.welcomeMessage || '' );
             } else {
-                // Restore previous conversation
-                chatHistory.forEach( msg => appendMessage( msg.role === 'user' ? 'user' : 'bot', msg.content, false ) );
+                // Restore history — strip product markers (cards won't re-render)
+                chatHistory.forEach( msg => appendMessage(
+                    msg.role === 'user' ? 'user' : 'bot',
+                    msg.content.replace( /\[PRODUCT:\d+\]/g, '' ).trim(),
+                    false
+                ) );
             }
         }
 
-        // Focus input after transition
         setTimeout( () => inputEl.focus(), 200 );
         scrollToBottom();
     }
@@ -80,46 +77,24 @@
         bubble.focus();
     }
 
-    // ── Message rendering ─────────────────────────────────────────────────────
-    function appendMessage( role, text, animate = true ) {
-        const row = document.createElement( 'div' );
-        row.className = 'cacb-msg cacb-msg--' + role + ( animate ? ' cacb-msg--in' : '' );
-
-        const bubble_el = document.createElement( 'div' );
-        bubble_el.className = 'cacb-bubble';
-
-        if ( role === 'user' ) {
-            // User input: always escape to prevent XSS
-            bubble_el.innerHTML = escapeHtml( text ).replace( /\n/g, '<br>' );
-        } else {
-            // Bot reply: render markdown (escapes internally, then applies formatting)
-            bubble_el.innerHTML = renderMarkdown( text );
-        }
-
-        row.appendChild( bubble_el );
-        msgList.appendChild( row );
-        scrollToBottom();
-        return row;
-    }
-
+    // ── Utilities ─────────────────────────────────────────────────────────────
     function escapeHtml( str ) {
         const div = document.createElement( 'div' );
-        div.appendChild( document.createTextNode( str ) );
+        div.appendChild( document.createTextNode( str || '' ) );
         return div.innerHTML;
     }
 
-    // ── Minimal markdown renderer (bold, italic, unordered lists) ─────────────
+    function scrollToBottom() {
+        msgList.scrollTop = msgList.scrollHeight;
+    }
+
+    // ── Minimal markdown renderer ─────────────────────────────────────────────
     function renderMarkdown( text ) {
-        // Always escape first to prevent XSS
         let html = escapeHtml( text );
 
-        // **bold**
         html = html.replace( /\*\*(.+?)\*\*/g, '<strong>$1</strong>' );
-
-        // *italic* (single asterisk, not double)
         html = html.replace( /(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>' );
 
-        // Unordered lists: lines starting with -  *  or •
         const lines  = html.split( '\n' );
         const parts  = [];
         let   inList = false;
@@ -136,22 +111,109 @@
         }
         if ( inList ) parts.push( '</ul>' );
 
-        // Join with <br>, remove <br> around list tags
         return parts.join( '\n' )
             .replace( /\n/g, '<br>' )
             .replace( /<br>(<\/?(?:ul|li)>)/g, '$1' )
             .replace( /(<\/(?:ul|li)>)<br>/g, '$1' );
     }
 
-    function scrollToBottom() {
-        msgList.scrollTop = msgList.scrollHeight;
+    // ── Append a plain message bubble ─────────────────────────────────────────
+    function appendMessage( role, text, animate = true ) {
+        const row = document.createElement( 'div' );
+        row.className = 'cacb-msg cacb-msg--' + role + ( animate ? ' cacb-msg--in' : '' );
+
+        const bbl = document.createElement( 'div' );
+        bbl.className = 'cacb-bubble';
+        bbl.innerHTML = role === 'user'
+            ? escapeHtml( text ).replace( /\n/g, '<br>' )
+            : renderMarkdown( text );
+
+        row.appendChild( bbl );
+        msgList.appendChild( row );
+        scrollToBottom();
+        return row;
+    }
+
+    // ── Append bot message with optional product cards ────────────────────────
+    function appendBotMessage( text ) {
+        // Split on [PRODUCT:123] markers — odd indexes are product IDs
+        const parts = text.split( /\[PRODUCT:(\d+)\]/g );
+        const row   = document.createElement( 'div' );
+        row.className = 'cacb-msg cacb-msg--bot cacb-msg--in';
+        msgList.appendChild( row );
+
+        for ( let i = 0; i < parts.length; i++ ) {
+            if ( i % 2 === 0 ) {
+                // Text segment
+                const seg = parts[ i ].replace( /^\n+|\n+$/g, '' );
+                if ( seg ) {
+                    const bbl = document.createElement( 'div' );
+                    bbl.className = 'cacb-bubble';
+                    bbl.innerHTML = renderMarkdown( seg );
+                    row.appendChild( bbl );
+                }
+            } else {
+                // Product ID → create placeholder and fetch asynchronously
+                const id = parseInt( parts[ i ], 10 );
+                const ph = document.createElement( 'div' );
+                ph.className = 'cacb-card-placeholder';
+                row.appendChild( ph );
+                fetchProductCard( ph, id );
+            }
+        }
+
+        scrollToBottom();
+    }
+
+    // ── Fetch product data and replace placeholder with card ──────────────────
+    function fetchProductCard( placeholder, id ) {
+        if ( ! cfg.productUrl ) { placeholder.remove(); return; }
+
+        fetch( cfg.productUrl + id )
+            .then( function ( res ) {
+                if ( ! res.ok ) { placeholder.remove(); return null; }
+                return res.json();
+            } )
+            .then( function ( p ) {
+                if ( ! p ) return;
+                const card = document.createElement( 'div' );
+                card.className = 'cacb-product-card';
+                card.innerHTML = buildCardHtml( p );
+                placeholder.replaceWith( card );
+                scrollToBottom();
+            } )
+            .catch( function () { placeholder.remove(); } );
+    }
+
+    // ── Build product card inner HTML ─────────────────────────────────────────
+    function buildCardHtml( p ) {
+        const onSale = p.sale_price && p.regular_price &&
+            parseFloat( p.sale_price ) < parseFloat( p.regular_price );
+
+        const imgHtml = p.image
+            ? '<img class="cacb-card-img" src="' + escapeHtml( p.image ) + '" alt="' + escapeHtml( p.name ) + '" loading="lazy">'
+            : '';
+
+        const priceHtml = onSale
+            ? '<span class="cacb-card-sale">' + escapeHtml( p.price ) + '€</span>'
+              + '<s class="cacb-card-regular">' + escapeHtml( p.regular_price ) + '€</s>'
+            : '<span class="cacb-card-price">' + escapeHtml( p.price ) + '€</span>';
+
+        const url = /^https?:\/\//.test( p.url ) ? p.url : '#';
+
+        return imgHtml
+            + '<div class="cacb-card-body">'
+            + '<div class="cacb-card-name">' + escapeHtml( p.name ) + '</div>'
+            + '<div class="cacb-card-prices">' + priceHtml + '</div>'
+            + '<a href="' + escapeHtml( url ) + '" class="cacb-card-btn" target="_blank" rel="noopener noreferrer">Προβολή Προϊόντος</a>'
+            + '</div>';
     }
 
     // ── Typing indicator ──────────────────────────────────────────────────────
-    function showTyping()  { typingEl.hidden = false; scrollToBottom(); }
-    function hideTyping()  { typingEl.hidden = true; }
+    function showTyping() { typingEl.hidden = false; scrollToBottom(); }
+    function hideTyping() { typingEl.hidden = true; }
 
-    // ── Send message (streaming via SSE) ─────────────────────────────────────
+    // ── Send message via REST API ─────────────────────────────────────────────
     async function sendMessage() {
         const text = inputEl.value.trim();
         if ( ! text || isSending ) return;
@@ -159,103 +221,43 @@
         inputEl.value = '';
         autoResize();
         appendMessage( 'user', text );
-        isSending = true;
+        isSending        = true;
         sendBtn.disabled = true;
         showTyping();
 
         chatHistory.push( { role: 'user', content: text } );
         saveHistory();
 
-        let fullReply = '';
-        let botBubble = null; // created on first chunk
-
         try {
-            const body = new URLSearchParams( {
-                action:   'cacb_stream',
-                nonce:    cfg.nonce,
-                messages: JSON.stringify( chatHistory ),
-            } );
-
-            const res = await fetch( cfg.streamUrl, {
+            const res = await fetch( cfg.apiUrl, {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body,
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify( { messages: chatHistory, nonce: cfg.nonce } ),
             } );
 
-            // If SSE not supported or request failed, fall back to REST endpoint
-            if ( ! res.ok || ! res.body ) {
-                const data = await res.json().catch( () => ({}) );
+            const data = await res.json();
+            hideTyping();
+
+            if ( ! res.ok || data.code ) {
                 appendMessage( 'bot', data.message || cfg.errorMessage );
                 return;
             }
 
-            const reader     = res.body.getReader();
-            const decoder    = new TextDecoder();
-            let   buffer     = '';
-            let   streamDone = false; // flag shared between outer while and inner for
-
-            while ( ! streamDone ) {
-                const { done, value } = await reader.read();
-                if ( done ) break;
-
-                buffer += decoder.decode( value, { stream: true } );
-
-                // SSE events are separated by double newlines
-                const parts = buffer.split( '\n\n' );
-                buffer = parts.pop(); // keep last incomplete chunk
-
-                for ( const part of parts ) {
-                    const line = part.trim();
-                    if ( ! line.startsWith( 'data: ' ) ) continue;
-
-                    const payload = line.slice( 6 ).trim();
-                    if ( payload === '[DONE]' ) {
-                        streamDone = true; // stops outer while too
-                        break;
-                    }
-
-                    let parsed;
-                    try { parsed = JSON.parse( payload ); } catch { continue; }
-
-                    if ( parsed.e ) {
-                        // Error from server — stop reading
-                        hideTyping();
-                        if ( botBubble ) botBubble.innerHTML = escapeHtml( parsed.e );
-                        else appendMessage( 'bot', parsed.e );
-                        streamDone = true;
-                        break;
-                    }
-
-                    if ( parsed.t ) {
-                        // First chunk: hide typing dots and create bot bubble
-                        if ( ! botBubble ) {
-                            hideTyping();
-                            const row = appendMessage( 'bot', '', true );
-                            botBubble = row.querySelector( '.cacb-bubble' );
-                        }
-                        fullReply += parsed.t;
-                        botBubble.innerHTML = renderMarkdown( fullReply );
-                        scrollToBottom();
-                    }
-                }
-            }
-
-            if ( fullReply ) {
-                chatHistory.push( { role: 'assistant', content: fullReply } );
+            const reply = ( data.reply || '' ).trim();
+            if ( reply ) {
+                chatHistory.push( { role: 'assistant', content: reply } );
                 saveHistory();
-                logExchange( text, fullReply ); // fire-and-forget
-            } else if ( ! botBubble ) {
-                // Stream ended with no text and no error shown
+                appendBotMessage( reply );
+            } else {
                 appendMessage( 'bot', cfg.errorMessage );
             }
 
-        } catch ( err ) {
+        } catch {
             hideTyping();
-            if ( botBubble ) botBubble.innerHTML = escapeHtml( cfg.errorMessage );
-            else appendMessage( 'bot', cfg.errorMessage );
+            appendMessage( 'bot', cfg.errorMessage );
         } finally {
             hideTyping();
-            isSending = false;
+            isSending        = false;
             sendBtn.disabled = false;
             inputEl.focus();
         }
@@ -269,20 +271,6 @@
         appendMessage( 'bot', cfg.welcomeMessage || '' );
     }
 
-    // ── Fire-and-forget: log exchange after stream completes ─────────────────
-    function logExchange( userMsg, botReply ) {
-        fetch( cfg.streamUrl, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams( {
-                action:    'cacb_log',
-                nonce:     cfg.nonce,
-                user_msg:  userMsg,
-                bot_reply: botReply,
-            } ),
-        } ).catch( function () {} ); // silent — log failure must never affect the user
-    }
-
     // ── Auto-resize textarea ──────────────────────────────────────────────────
     function autoResize() {
         inputEl.style.height = 'auto';
@@ -290,55 +278,21 @@
     }
 
     // ── Event listeners ───────────────────────────────────────────────────────
-    bubble.addEventListener( 'click', ( e ) => {
-        e.stopPropagation();
-        isOpen ? closeChat() : openChat();
-    } );
-
-    closeBtn.addEventListener( 'click', ( e ) => {
-        e.stopPropagation();
-        closeChat();
-    } );
-
-    if ( clearBtn ) {
-        clearBtn.addEventListener( 'click', ( e ) => {
-            e.stopPropagation();
-            clearChat();
-        } );
-    }
-
+    bubble.addEventListener( 'click', e => { e.stopPropagation(); isOpen ? closeChat() : openChat(); } );
+    closeBtn.addEventListener( 'click', e => { e.stopPropagation(); closeChat(); } );
+    if ( clearBtn ) clearBtn.addEventListener( 'click', e => { e.stopPropagation(); clearChat(); } );
     sendBtn.addEventListener( 'click', sendMessage );
-
-    inputEl.addEventListener( 'keydown', ( e ) => {
-        // Send on Enter (not Shift+Enter)
-        if ( e.key === 'Enter' && ! e.shiftKey ) {
-            e.preventDefault();
-            sendMessage();
-        }
+    inputEl.addEventListener( 'keydown', e => {
+        if ( e.key === 'Enter' && ! e.shiftKey ) { e.preventDefault(); sendMessage(); }
     } );
-
     inputEl.addEventListener( 'input', autoResize );
+    document.addEventListener( 'keydown', e => { if ( e.key === 'Escape' && isOpen ) closeChat(); } );
+    document.addEventListener( 'click', e => { if ( isOpen && ! wrapper.contains( e.target ) ) closeChat(); } );
 
-    // Close on Escape
-    document.addEventListener( 'keydown', ( e ) => {
-        if ( e.key === 'Escape' && isOpen ) closeChat();
-    } );
-
-    // Close on outside click
-    document.addEventListener( 'click', ( e ) => {
-        if ( isOpen && ! wrapper.contains( e.target ) ) {
-            closeChat();
-        }
-    } );
-
-    // ── Pulse animation after 3s — removed after all 3 iterations complete ───
+    // ── Pulse animation after 3s ──────────────────────────────────────────────
     setTimeout( () => {
         bubble.classList.add( 'cacb-pulse' );
-        bubble.addEventListener(
-            'animationend',
-            () => bubble.classList.remove( 'cacb-pulse' ),
-            { once: true }
-        );
+        bubble.addEventListener( 'animationend', () => bubble.classList.remove( 'cacb-pulse' ), { once: true } );
     }, 3000 );
 
 } )();
