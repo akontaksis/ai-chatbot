@@ -136,8 +136,8 @@
 
     // ── Append bot message with optional product cards ────────────────────────
     function appendBotMessage( text ) {
-        // Split on [PRODUCT:123] markers — odd indexes are product IDs
-        const parts = text.split( /\[PRODUCT:(\d+)\]/g );
+        // Split on [PRODUCT:123] or [PRODUCT:ID:123] markers — odd indexes are product IDs
+        const parts = text.split( /\[PRODUCT:(?:ID:)?(\d+)\]/g );
         const row   = document.createElement( 'div' );
         row.className = 'cacb-msg cacb-msg--bot cacb-msg--in';
         msgList.appendChild( row );

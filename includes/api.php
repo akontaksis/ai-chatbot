@@ -269,7 +269,7 @@ function cacb_handle_chat( WP_REST_Request $request ) {
 
     // Product card instruction — only when context contains products with IDs
     if ( function_exists( 'wc_get_product' ) && strpos( $rag_context, ' | ID:' ) !== false ) {
-        $system_prompt .= "\n\nΌταν αναφέρεις συγκεκριμένο προϊόν, πρόσθεσε [PRODUCT:ID] αμέσως μετά το όνομά του (ID από τα στοιχεία).";
+        $system_prompt .= "\n\nΌταν αναφέρεις συγκεκριμένο προϊόν, πρόσθεσε [PRODUCT:123] στο τέλος της πρότασης, όπου 123 είναι ο αριθμός που εμφανίζεται μετά το 'ID:' στα στοιχεία του προϊόντος. Παράδειγμα: αν το προϊόν έχει ID:3052, γράψε [PRODUCT:3052].";
     }
 
     $max_tokens = min( 2000, max( 100, (int) get_option( 'cacb_max_tokens', 500 ) ) );
