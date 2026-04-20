@@ -242,6 +242,11 @@ function cacb_execute_search_products( array $args ): string {
         return 'Το WooCommerce δεν είναι ενεργό.';
     }
 
+    // TEMPORARY DEBUG — remove after diagnosis
+    if ( '1' === get_option( 'cacb_debug_mode', '0' ) ) {
+        error_log( '[CACB-DEBUG] Tool args from LLM: ' . wp_json_encode( $args ) );
+    }
+
     $query_args = [
         'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
         'status'  => 'publish',
@@ -294,6 +299,12 @@ function cacb_execute_search_products( array $args ): string {
     }
 
     $products = wc_get_products( $query_args );
+
+    // TEMPORARY DEBUG — remove after diagnosis
+    if ( '1' === get_option( 'cacb_debug_mode', '0' ) ) {
+        error_log( '[CACB-DEBUG] Final query_args: ' . wp_json_encode( $query_args ) );
+        error_log( '[CACB-DEBUG] Products found: ' . count( $products ) );
+    }
 
     if ( empty( $products ) ) {
         return 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
