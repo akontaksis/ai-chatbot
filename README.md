@@ -24,6 +24,7 @@ Production-ready με **Function Calling** για WooCommerce προϊόντα (
 
 | Model | Περιγραφή |
 |---|---|
+| `gpt-5-nano` | Νέο, γρήγορο & οικονομικό |
 | `gpt-4o-mini` | Γρήγορο & φθηνό — προτεινόμενο |
 | `gpt-4o` | Πιο έξυπνο, πιο ακριβό |
 | `gpt-3.5-turbo` | Φθηνότατο |
