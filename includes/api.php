@@ -422,8 +422,9 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
     ];
 
     if ( $is_new ) {
-        $payload['max_completion_tokens'] = $max_tokens;
-        // Reasoning models only accept default temperature (1) — omit entirely
+        // Reasoning models spend internal tokens on thinking before producing output.
+        // Enforce a 1 500-token floor so finish_reason never hits "length" on short answers.
+        $payload['max_completion_tokens'] = max( 1500, $max_tokens );
     } else {
         $payload['max_tokens']  = $max_tokens;
         $payload['temperature'] = 0.2;
@@ -489,7 +490,7 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
             'messages' => $messages,
         ];
         if ( $is_new ) {
-            $payload2['max_completion_tokens'] = $max_tokens;
+            $payload2['max_completion_tokens'] = max( 1500, $max_tokens );
         } else {
             $payload2['max_tokens']  = $max_tokens;
             $payload2['temperature'] = 0.2;
