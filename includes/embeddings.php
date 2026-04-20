@@ -315,67 +315,6 @@ function cacb_chunk_text( string $text, int $chunk_words = 200, int $overlap_wor
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Indexes (or re-indexes) a single WooCommerce product.
- * Skips silently if content hash is unchanged.
- * Removes the row if the product no longer exists or is not published.
- *
- * @param  int $product_id
- * @return true|WP_Error
- */
-function cacb_index_product( int $product_id ) {
-    if ( ! function_exists( 'wc_get_product' ) ) {
-        return new WP_Error( 'no_wc', 'WooCommerce not active.' );
-    }
-
-    $product = wc_get_product( $product_id );
-    if ( ! $product || 'publish' !== $product->get_status() ) {
-        cacb_delete_embedding( 'product', $product_id );
-        return true;
-    }
-
-    $text = cacb_product_to_text( $product, 0 ); // no desc limit — full text for best embedding quality
-    $hash = md5( $text );
-
-    global $wpdb;
-    $existing_hash = $wpdb->get_var( $wpdb->prepare(
-        "SELECT content_hash FROM {$wpdb->prefix}cacb_embeddings WHERE object_type = 'product' AND object_id = %d",
-        $product_id
-    ) );
-
-    // Skip API call if content is unchanged
-    if ( $existing_hash === $hash ) {
-        return true;
-    }
-
-    $embedding = cacb_generate_embedding( $text );
-    if ( is_wp_error( $embedding ) ) {
-        return $embedding;
-    }
-
-    $json = wp_json_encode( $embedding );
-    if ( false === $json ) {
-        return new WP_Error( 'json_encode_fail', "Failed to encode embedding for product {$product_id}." );
-    }
-
-    $wpdb->replace(
-        $wpdb->prefix . 'cacb_embeddings',
-        [
-            'object_type'  => 'product',
-            'object_id'    => $product_id,
-            'chunk_index'  => 0,
-            'chunk_text'   => $text,
-            'content_hash' => $hash,
-            'embedding'    => $json,
-            'dims'         => count( $embedding ),
-            'indexed_at'   => current_time( 'mysql' ),
-        ],
-        [ '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s' ]
-    );
-
-    return true;
-}
-
-/**
  * Extracts plain text from a page, with special handling for Elementor pages.
  * Elementor stores content in _elementor_data (JSON) — post_content is empty.
  *
@@ -616,11 +555,7 @@ function cacb_rag_build_context( string $query ): string {
             continue;
         }
 
-        if ( 'product' === $item['type'] ) {
-            // Products are retrieved via function calling — skip from RAG context.
-            continue;
-
-        } elseif ( 'page' === $item['type'] ) {
+        if ( 'page' === $item['type'] ) {
             // Results are sorted by score DESC; first occurrence of a page_id is the best chunk
             if ( isset( $seen_pages[ $item['id'] ] ) ) {
                 continue;
@@ -668,17 +603,17 @@ function cacb_rag_build_context( string $query ): string {
  */
 function cacb_get_smart_context( array $messages ): string {
 
-    // RAG disabled → fall back to old method
+    // RAG disabled → no context (products handled via function calling)
     if ( get_option( 'cacb_rag_enabled', '0' ) !== '1' ) {
-        return cacb_get_wc_product_context();
+        return '';
     }
 
-    // Nothing indexed yet → fall back gracefully
+    // Nothing indexed yet → no context
     global $wpdb;
     // phpcs:ignore WordPress.DB.DirectDatabaseQuery
     $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}cacb_embeddings" );
     if ( $count === 0 ) {
-        return cacb_get_wc_product_context();
+        return '';
     }
 
     // Build a context-aware query from the last 3 messages so the RAG
@@ -688,31 +623,19 @@ function cacb_get_smart_context( array $messages ): string {
     $query  = trim( $query );
 
     if ( empty( $query ) ) {
-        return cacb_get_wc_product_context();
+        return '';
     }
 
-    $context = cacb_rag_build_context( $query );
-
-    // If RAG returned nothing useful, fall back to ensure context is always provided
-    return $context !== '' ? $context : cacb_get_wc_product_context();
+    return cacb_rag_build_context( $query );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTO-REINDEX HOOKS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-add_action( 'woocommerce_update_product', 'cacb_auto_reindex_product' );
-add_action( 'woocommerce_new_product',    'cacb_auto_reindex_product' );
-function cacb_auto_reindex_product( int $product_id ): void {
-    if ( get_option( 'cacb_rag_enabled', '0' ) !== '1' ) {
-        return;
-    }
-    // Fire in background via WP-Cron to avoid slowing down the product save
-    wp_schedule_single_event( time(), 'cacb_async_index_product', [ $product_id ] );
-}
-
-add_action( 'cacb_async_index_product', 'cacb_index_product' );
-
+// Product embeddings are deprecated in v1.4.x — WooCommerce products are now
+// retrieved via function calling (see includes/api.php). We still clean up any
+// stale rows from pre-1.4.0 installations when a product is deleted.
 add_action( 'woocommerce_delete_product', 'cacb_auto_delete_product_embed' );
 function cacb_auto_delete_product_embed( int $product_id ): void {
     cacb_delete_embedding( 'product', $product_id );
@@ -751,107 +674,64 @@ function cacb_ajax_rag_status(): void {
 
     // phpcs:disable WordPress.DB.DirectDatabaseQuery
     // COUNT(DISTINCT object_id) so chunked pages count as one entry each
-    $indexed_products = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT object_id) FROM {$table} WHERE object_type = 'product'" );
-    $indexed_pages    = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT object_id) FROM {$table} WHERE object_type = 'page'" );
-    $last_indexed     = $wpdb->get_var( "SELECT indexed_at FROM {$table} ORDER BY indexed_at DESC LIMIT 1" );
+    $indexed_pages = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT object_id) FROM {$table} WHERE object_type = 'page'" );
+    $last_indexed  = $wpdb->get_var( "SELECT indexed_at FROM {$table} WHERE object_type = 'page' ORDER BY indexed_at DESC LIMIT 1" );
     // phpcs:enable
-
-    $total_products = 0;
-    if ( function_exists( 'wc_get_products' ) ) {
-        $total_products = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}posts
-             WHERE post_type = 'product' AND post_status = 'publish'"
-        );
-    }
 
     $total_pages = (int) wp_count_posts( 'page' )->publish;
 
     wp_send_json_success( [
-        'indexed_products' => $indexed_products,
-        'indexed_pages'    => $indexed_pages,
-        'total_products'   => $total_products,
-        'total_pages'      => $total_pages,
-        'last_indexed'     => $last_indexed
+        'indexed_pages' => $indexed_pages,
+        'total_pages'   => $total_pages,
+        'last_indexed'  => $last_indexed
             ? human_time_diff( strtotime( $last_indexed ), time() )
             : null,
-        'provider'         => cacb_get_embedding_provider(),
+        'provider'      => cacb_get_embedding_provider(),
     ] );
 }
 
-// ── Batch index ───────────────────────────────────────────────────────────────
+// ── Batch index (pages only — products are retrieved via function calling) ───
 add_action( 'wp_ajax_cacb_rag_index_batch', 'cacb_ajax_rag_index_batch' );
 function cacb_ajax_rag_index_batch(): void {
     check_ajax_referer( 'cacb_admin_nonce', 'nonce' );
     if ( ! current_user_can( 'manage_options' ) ) wp_die();
 
-    $type   = sanitize_key( wp_unslash( $_POST['object_type'] ?? 'product' ) );
+    $type   = sanitize_key( wp_unslash( $_POST['object_type'] ?? 'page' ) );
     $offset = max( 0, (int) ( $_POST['offset'] ?? 0 ) );
-    // Products: one API call each. Pages: up to ~10 chunks each → smaller batch.
-    $batch  = ( 'page' === $type ) ? 2 : 5;
 
+    if ( 'page' !== $type ) {
+        wp_send_json_error( 'Invalid object type.' );
+    }
+
+    // Pages: up to ~10 chunks each → keep batch small to avoid timeouts
+    $batch   = 2;
     $indexed = 0;
     $errors  = [];
 
-    if ( 'product' === $type && function_exists( 'wc_get_products' ) ) {
+    $posts = get_posts( [
+        'post_type'   => 'page',
+        'post_status' => 'publish',
+        'numberposts' => $batch,
+        'offset'      => $offset,
+        'fields'      => 'ids',
+        'orderby'     => 'ID',
+        'order'       => 'ASC',
+    ] );
 
-        $ids = wc_get_products( [
-            'limit'   => $batch,
-            'offset'  => $offset,
-            'status'  => 'publish',
-            'return'  => 'ids',
-            'orderby' => 'ID',
-            'order'   => 'ASC',
-        ] );
-
-        foreach ( $ids as $id ) {
-            $result = cacb_index_product( (int) $id );
-            is_wp_error( $result ) ? $errors[] = $result->get_error_message() : $indexed++;
-        }
-
-        global $wpdb;
-        $total = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}posts
-             WHERE post_type = 'product' AND post_status = 'publish'"
-        );
-
-        wp_send_json_success( [
-            'indexed' => $indexed,
-            'offset'  => $offset + count( $ids ),
-            'done'    => count( $ids ) < $batch,
-            'total'   => $total,
-            'errors'  => $errors,
-        ] );
-
-    } elseif ( 'page' === $type ) {
-
-        $posts = get_posts( [
-            'post_type'   => 'page',
-            'post_status' => 'publish',
-            'numberposts' => $batch,
-            'offset'      => $offset,
-            'fields'      => 'ids',
-            'orderby'     => 'ID',
-            'order'       => 'ASC',
-        ] );
-
-        foreach ( $posts as $id ) {
-            $result = cacb_index_page( (int) $id );
-            is_wp_error( $result ) ? $errors[] = $result->get_error_message() : $indexed++;
-        }
-
-        $total = (int) wp_count_posts( 'page' )->publish;
-
-        wp_send_json_success( [
-            'indexed' => $indexed,
-            'offset'  => $offset + count( $posts ),
-            'done'    => count( $posts ) < $batch,
-            'total'   => $total,
-            'errors'  => $errors,
-        ] );
-
-    } else {
-        wp_send_json_error( 'Invalid object type.' );
+    foreach ( $posts as $id ) {
+        $result = cacb_index_page( (int) $id );
+        is_wp_error( $result ) ? $errors[] = $result->get_error_message() : $indexed++;
     }
+
+    $total = (int) wp_count_posts( 'page' )->publish;
+
+    wp_send_json_success( [
+        'indexed' => $indexed,
+        'offset'  => $offset + count( $posts ),
+        'done'    => count( $posts ) < $batch,
+        'total'   => $total,
+        'errors'  => $errors,
+    ] );
 }
 
 // ── Clear index ───────────────────────────────────────────────────────────────

@@ -83,10 +83,6 @@
                     + '<tr><td style="padding:4px 16px 4px 0"><strong>Provider Embeddings</strong></td>'
                     + '<td>' + esc( d.provider ) + '</td></tr>';
 
-                if ( d.total_products > 0 ) {
-                    html += '<tr><td style="padding:4px 16px 4px 0"><strong>Προϊόντα indexed</strong></td>'
-                        + '<td>' + d.indexed_products + ' / ' + d.total_products + '</td></tr>';
-                }
                 if ( d.total_pages > 0 ) {
                     html += '<tr><td style="padding:4px 16px 4px 0"><strong>Σελίδες indexed</strong></td>'
                         + '<td>' + d.indexed_pages + ' / ' + d.total_pages + '</td></tr>';
@@ -96,7 +92,7 @@
                         + '<td>πριν ' + esc( d.last_indexed ) + '</td></tr>';
                 } else {
                     html += '<tr><td colspan="2" style="padding:4px 0">'
-                        + '<span style="color:#d63638">⚠ Κανένα περιεχόμενο στον index ακόμα. Πάτα "Index Προϊόντων" παρακάτω.</span>'
+                        + '<span style="color:#d63638">⚠ Κανένα περιεχόμενο στον index ακόμα. Πάτα "Index Σελίδων" παρακάτω.</span>'
                         + '</td></tr>';
                 }
                 html += '</table>';
@@ -119,12 +115,10 @@
         var $bar      = $( '#cacb-rag-progress-bar' );
         var $text     = $( '#cacb-rag-progress-text' );
         var $wrap     = $( '#cacb-rag-progress-wrap' );
-        var $btnP     = $( '#cacb-rag-index-products' );
         var $btnPg    = $( '#cacb-rag-index-pages' );
         var $btnClear = $( '#cacb-rag-clear' );
 
         $wrap.show();
-        $btnP.prop( 'disabled', true );
         $btnPg.prop( 'disabled', true );
         $btnClear.prop( 'disabled', true );
 
@@ -136,7 +130,6 @@
         }, function ( res ) {
             if ( ! res.success ) {
                 $text.html( '<span style="color:#d63638">❌ ' + esc( ( res.data && res.data.message ) || i18n.indexError ) + '</span>' );
-                $btnP.prop( 'disabled', false );
                 $btnPg.prop( 'disabled', false );
                 $btnClear.prop( 'disabled', false );
                 return;
@@ -175,7 +168,6 @@
                     $text.html( '<span style="color:#1e6637">✅ ' + i18n.indexDone + ' (' + totalIndexed + ' αντικείμενα)</span>' );
                 }
 
-                $btnP.prop( 'disabled', false );
                 $btnPg.prop( 'disabled', false );
                 $btnClear.prop( 'disabled', false );
                 loadRagStatus();
@@ -184,19 +176,12 @@
             }
         } ).fail( function () {
             $text.html( '<span style="color:#d63638">❌ Network error</span>' );
-            $btnP.prop( 'disabled', false );
             $btnPg.prop( 'disabled', false );
             $btnClear.prop( 'disabled', false );
         } );
     }
 
     // ── RAG: button handlers ──────────────────────────────────────────────────
-    $( '#cacb-rag-index-products' ).on( 'click', function () {
-        $( '#cacb-rag-progress-bar' ).css( 'width', '0%' );
-        $( '#cacb-rag-progress-text' ).text( '' );
-        runBatchIndex( 'product', 0 );
-    } );
-
     $( '#cacb-rag-index-pages' ).on( 'click', function () {
         $( '#cacb-rag-progress-bar' ).css( 'width', '0%' );
         $( '#cacb-rag-progress-text' ).text( '' );

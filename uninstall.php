@@ -30,7 +30,10 @@ $options = [
     'cacb_primary_color',
     'cacb_wc_enabled',
     'cacb_wc_limit',
+    // Legacy options (cleaned up from pre-1.4.2 installations)
     'cacb_wc_categories',
+    'cacb_gemini_api_key',
+    'cacb_gemini_model',
     // Logging
     'cacb_logging_enabled',
     'cacb_log_retention',
@@ -59,7 +62,5 @@ $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}cacb_embeddings" );
 $wpdb->query(
     "DELETE FROM {$wpdb->options}
      WHERE option_name LIKE '_transient_cacb_rl_%'
-        OR option_name LIKE '_transient_timeout_cacb_rl_%'
-        OR option_name = '_transient_cacb_wc_products_cache'
-        OR option_name = '_transient_timeout_cacb_wc_products_cache'"
+        OR option_name LIKE '_transient_timeout_cacb_rl_%'"
 );

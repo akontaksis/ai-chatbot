@@ -3,14 +3,14 @@
  * Plugin Name: Smart AI Chatbot
  * Plugin URI:  https://wordpress.org/plugins/smart-ai-chatbot
  * Description: AI-powered chatbot supporting OpenAI (GPT) and Anthropic (Claude). Function calling for WooCommerce products, RAG semantic search, product cards, rate limiting, AES-256-GCM security, and full admin controls.
- * Version:     1.4.1
+ * Version:     1.4.2
  * License:     GPL-2.0+
  * Text Domain: smart-ai-chatbot
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CACB_VERSION',     '1.4.1' );
+define( 'CACB_VERSION',     '1.4.2' );
 define( 'CACB_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'CACB_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'CACB_PLUGIN_FILE', __FILE__ );
@@ -37,8 +37,7 @@ function cacb_activate() {
         'cacb_primary_color'    => '#1a1a2e',
         'cacb_system_prompt'    => 'Είσαι ένας εξυπηρετικός οινολογικός βοηθός για το κατάστημα. Απάντα πάντα στα Ελληνικά με φιλικό και επαγγελματικό τόνο. Απάντα κανονικά σε γενικές ερωτήσεις για κρασί και οινολογία. Μόνο αν η ερώτηση αφορά κάτι πολύ συγκεκριμένο για το κατάστημα που δεν γνωρίζεις (π.χ. παραγγελία, αποστολή, επιστροφή), τότε πρότεινε επικοινωνία με την ομάδα.',
         'cacb_wc_enabled'       => '0',
-        'cacb_wc_limit'         => 50,
-        'cacb_wc_categories'    => '',
+        'cacb_wc_limit'         => 8,
         'cacb_provider'         => 'openai',
         'cacb_claude_api_key'   => '',
         'cacb_claude_model'     => 'claude-sonnet-4-6',
@@ -70,14 +69,3 @@ function cacb_deactivate() {
 
 // ── DB migration: add chunk columns to existing installations (v1.2.6) ───────
 add_action( 'admin_init', 'cacb_maybe_migrate_chunks_schema' );
-
-// ── Handle manual cache clear from settings page ──────────────────────────────
-add_action( 'admin_init', 'cacb_maybe_clear_cache' );
-function cacb_maybe_clear_cache() {
-    if ( ! current_user_can( 'manage_options' ) ) return;
-    if ( ! isset( $_GET['cacb_clear_cache'] ) || '1' !== $_GET['cacb_clear_cache'] ) return;
-    check_admin_referer( 'cacb_clear_cache' );
-    delete_transient( 'cacb_wc_products_cache' );
-    wp_safe_redirect( remove_query_arg( [ 'cacb_clear_cache', '_wpnonce' ] ) );
-    exit;
-}

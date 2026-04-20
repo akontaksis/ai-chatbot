@@ -137,7 +137,7 @@ function cacb_get_attribute_terms( string $slug ): array {
 }
 
 function cacb_get_tool_definitions(): array {
-    if ( ! function_exists( 'get_terms' ) ) {
+    if ( ! function_exists( 'get_terms' ) || ! function_exists( 'wc_get_products' ) ) {
         return [];
     }
 
@@ -224,9 +224,11 @@ function cacb_get_tool_definitions(): array {
         ];
     }
 
+    $max_results = max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) );
+
     return [
         'name'        => 'search_products',
-        'description' => 'Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση. Επιστρέφει έως 8 αποτελέσματα.',
+        'description' => "Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση. Επιστρέφει έως {$max_results} αποτελέσματα.",
         'parameters'  => [
             'type'       => 'object',
             'properties' => $properties,
@@ -241,7 +243,7 @@ function cacb_execute_search_products( array $args ): string {
     }
 
     $query_args = [
-        'limit'   => 8,
+        'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
         'status'  => 'publish',
         'orderby' => 'date',
         'order'   => 'DESC',
@@ -438,8 +440,8 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
     $http_code = wp_remote_retrieve_response_code( $response );
     $body      = json_decode( wp_remote_retrieve_body( $response ), true );
 
-    if ( $http_code !== 200 ) {
-        $err = $body['error']['message'] ?? 'Unknown OpenAI error';
+    if ( $http_code !== 200 || ! is_array( $body ) ) {
+        $err = is_array( $body ) ? ( $body['error']['message'] ?? 'Unknown OpenAI error' ) : 'Invalid response body';
         error_log( "[CACB] OpenAI API error {$http_code}: {$err}" );
         return new WP_Error( 'openai_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
@@ -478,7 +480,15 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
             return new WP_Error( 'openai_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
         }
 
-        $body2 = json_decode( wp_remote_retrieve_body( $response2 ), true );
+        $http_code2 = wp_remote_retrieve_response_code( $response2 );
+        $body2      = json_decode( wp_remote_retrieve_body( $response2 ), true );
+
+        if ( $http_code2 !== 200 || ! is_array( $body2 ) ) {
+            $err = is_array( $body2 ) ? ( $body2['error']['message'] ?? 'Unknown OpenAI error' ) : 'Invalid response body';
+            error_log( "[CACB] OpenAI API error (2nd call) {$http_code2}: {$err}" );
+            return new WP_Error( 'openai_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+        }
+
         $reply = $body2['choices'][0]['message']['content'] ?? '';
         if ( empty( $reply ) ) {
             return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
@@ -535,8 +545,8 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
     $http_code = wp_remote_retrieve_response_code( $response );
     $body      = json_decode( wp_remote_retrieve_body( $response ), true );
 
-    if ( $http_code !== 200 ) {
-        $err = $body['error']['message'] ?? 'Unknown Claude error';
+    if ( $http_code !== 200 || ! is_array( $body ) ) {
+        $err = is_array( $body ) ? ( $body['error']['message'] ?? 'Unknown Claude error' ) : 'Invalid response body';
         error_log( "[CACB] Claude API error {$http_code}: {$err}" );
         return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
@@ -552,7 +562,11 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
         }
 
         if ( $tool_use ) {
-            $tool_args   = $tool_use['input'] ?? [];
+            $tool_args = $tool_use['input'] ?? [];
+            if ( ! is_array( $tool_args ) ) {
+                error_log( '[CACB] Claude tool_use input not array: ' . var_export( $tool_args, true ) );
+                $tool_args = [];
+            }
             $tool_result = cacb_execute_search_products( $tool_args );
 
             // Append assistant turn + tool result as user message
@@ -571,10 +585,11 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
                 'timeout' => 30,
                 'headers' => $headers,
                 'body'    => wp_json_encode( [
-                    'model'      => $model,
-                    'max_tokens' => $max_tokens,
-                    'system'     => $system_prompt,
-                    'messages'   => $messages,
+                    'model'       => $model,
+                    'max_tokens'  => $max_tokens,
+                    'temperature' => 0.2,
+                    'system'      => $system_prompt,
+                    'messages'    => $messages,
                 ] ),
             ] );
 
@@ -583,7 +598,15 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
                 return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
             }
 
-            $body2 = json_decode( wp_remote_retrieve_body( $response2 ), true );
+            $http_code2 = wp_remote_retrieve_response_code( $response2 );
+            $body2      = json_decode( wp_remote_retrieve_body( $response2 ), true );
+
+            if ( $http_code2 !== 200 || ! is_array( $body2 ) ) {
+                $err = is_array( $body2 ) ? ( $body2['error']['message'] ?? 'Unknown Claude error' ) : 'Invalid response body';
+                error_log( "[CACB] Claude API error (2nd call) {$http_code2}: {$err}" );
+                return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+            }
+
             $reply = $body2['content'][0]['text'] ?? '';
             if ( empty( $reply ) ) {
                 return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );

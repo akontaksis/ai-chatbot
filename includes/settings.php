@@ -24,7 +24,6 @@ function cacb_register_settings() {
         'cacb_primary_color',
         'cacb_wc_enabled',
         'cacb_wc_limit',
-        'cacb_wc_categories',
         'cacb_logging_enabled',
         'cacb_log_retention',
         'cacb_debug_mode',
@@ -102,8 +101,8 @@ function cacb_decrypt_key( string $stored ): string {
 
     // Current format: AES-256-GCM (authenticated — tamper-proof)
     if ( strpos( $stored, 'cacb_enc2:' ) === 0 ) {
-        $raw = base64_decode( substr( $stored, 10 ) );
-        if ( strlen( $raw ) < 29 ) return ''; // nonce(12) + tag(16) + min 1 byte ciphertext
+        $raw = base64_decode( substr( $stored, 10 ), true );
+        if ( false === $raw || strlen( $raw ) < 29 ) return ''; // nonce(12) + tag(16) + min 1 byte ciphertext
         $nonce = substr( $raw, 0, 12 );
         $tag   = substr( $raw, 12, 16 );
         $enc   = substr( $raw, 28 );
@@ -113,8 +112,8 @@ function cacb_decrypt_key( string $stored ): string {
 
     // Legacy format: AES-256-CBC (backwards compatibility — re-encrypted on next save)
     if ( strpos( $stored, 'cacb_enc:' ) === 0 ) {
-        $raw = base64_decode( substr( $stored, 9 ) );
-        if ( strlen( $raw ) < 17 ) return ''; // iv(16) + min 1 byte ciphertext
+        $raw = base64_decode( substr( $stored, 9 ), true );
+        if ( false === $raw || strlen( $raw ) < 17 ) return ''; // iv(16) + min 1 byte ciphertext
         $iv  = substr( $raw, 0, 16 );
         $enc = substr( $raw, 16 );
         $dec = openssl_decrypt( $enc, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv );
@@ -171,7 +170,7 @@ function cacb_sanitize_option( $value ) {
         'cacb_max_tokens'    => [ 100, 2000 ],
         'cacb_rate_limit'    => [ 1,   200  ],
         'cacb_history_limit' => [ 2,   50   ],
-        'cacb_wc_limit'      => [ 10,  200  ],
+        'cacb_wc_limit'      => [ 1,   20   ],
         'cacb_log_retention' => [ 1,   365  ],
         'cacb_rag_top_k'     => [ 1,   10   ],
     ];

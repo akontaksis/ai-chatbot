@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.1**
+**Version 1.4.2**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**.
 Production-ready με **Function Calling** για WooCommerce προϊόντα (φιλτράρισμα ανά κατηγορία, χρονιά, ποικιλία, περιοχή, χώρα, γλυκύτητα, τιμή), **RAG** για FAQ/σελίδες, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
@@ -221,6 +221,7 @@ smart-ai-chatbot/
 | Rate limit | 1–200 | 20 | Μέγιστα μηνύματα ανά IP ανά ώρα |
 | Max tokens | 100–2000 | 500 | Μέγιστο μέγεθος απάντησης (έλεγχος κόστους) |
 | History limit | 2–50 | 10 | Πόσα τελευταία μηνύματα να θυμάται |
+| WC search limit | 1–20 | 8 | Max αποτελέσματα ανά αναζήτηση προϊόντων (`cacb_wc_limit`) |
 | Message length | — | 4 000 | Max χαρακτήρες ανά μήνυμα χρήστη (server-side cap) |
 
 ---
@@ -257,20 +258,13 @@ smart-ai-chatbot/
 
 **Settings → AI Chatbot → Knowledge Base**
 
-Αντί να στέλνεις ολόκληρο τον κατάλογο στο AI σε κάθε μήνυμα, το RAG σύστημα:
+Το RAG χρησιμοποιείται **αποκλειστικά για σελίδες/FAQ** (π.χ. πολιτική επιστροφών, αποστολή, επικοινωνία). Τα **WooCommerce προϊόντα εξυπηρετούνται εξ ολοκλήρου μέσω function calling** (βλ. παραπάνω) — δεν αποθηκεύονται πια στον RAG index.
 
-1. **Indexing**: Μετατρέπει κάθε προϊόν/σελίδα σε vector embedding και το αποθηκεύει στη βάση.
-2. **Retrieval**: Για κάθε ερώτηση χρήστη, βρίσκει τα top-K πιο σχετικά αντικείμενα (cosine similarity).
-3. **Augmentation**: Εισάγει **μόνο τα σχετικά** αποτελέσματα στο system prompt.
+Λειτουργία για σελίδες:
 
-### Πλεονεκτήματα
-
-| | Χωρίς RAG | Με RAG |
-|---|---|---|
-| Tokens/request | ~3 000–8 000 | ~300–500 |
-| Max προϊόντα | ~200 | Απεριόριστα |
-| Ακρίβεια απαντήσεων | Μέτρια | Υψηλή |
-| Κόστος indexing | — | ~$0.02 / 1 000 προϊόντα |
+1. **Indexing**: Κάθε σελίδα χωρίζεται σε 200-word chunks με 40-word overlap και μετατρέπεται σε vector embeddings που αποθηκεύονται στη βάση.
+2. **Retrieval**: Για κάθε ερώτηση χρήστη, βρίσκει τα top-K πιο σχετικά chunks (cosine similarity).
+3. **Augmentation**: Εισάγει **μόνο τα σχετικά** αποσπάσματα στο system prompt (ένα chunk ανά σελίδα — το καλύτερο).
 
 ### Embedding Provider
 
@@ -286,8 +280,8 @@ smart-ai-chatbot/
 | Option | Default | Περιγραφή |
 |---|---|---|
 | `cacb_rag_enabled` | `0` | Ενεργοποίηση RAG |
-| `cacb_rag_top_k` | `5` | Πόσα σχετικά αποτελέσματα να εισάγει στο prompt |
-| `cacb_rag_index_pages` | `0` | Ευρετηρίαση WordPress pages εκτός από προϊόντα |
+| `cacb_rag_top_k` | `5` | Πόσα σχετικά chunks να εισάγει στο prompt |
+| `cacb_rag_index_pages` | `0` | Auto-reindex WordPress pages κατά την αποθήκευση |
 | `cacb_rag_openai_key` | `''` | OpenAI key για embeddings (μόνο για Claude users) |
 
 ### Αρχιτεκτονική DB
@@ -295,12 +289,12 @@ smart-ai-chatbot/
 ```
 wp_cacb_embeddings
 ├── id           — AUTO INCREMENT
-├── object_type  — 'product' | 'page'
-├── object_id    — WooCommerce product ID ή WordPress post ID
-├── chunk_index  — 0 για προϊόντα · 0..n για σελίδες (v1.2.6+)
+├── object_type  — 'page' (τα 'product' rows από πριν-v1.4.2 διατηρούνται αλλά αγνοούνται)
+├── object_id    — WordPress post ID
+├── chunk_index  — 0..n ανά σελίδα (v1.2.6+)
 ├── chunk_text   — Το κείμενο αυτού του chunk (χρησιμοποιείται απευθείας στο RAG context)
 ├── content_hash — MD5 ολόκληρου του κειμένου σελίδας (αποθηκεύεται στο chunk 0)
-├── embedding    — JSON float array (1 536 ή 768 διαστάσεις)
+├── embedding    — JSON float array (1 536 διαστάσεις)
 ├── dims         — Αριθμός διαστάσεων
 └── indexed_at   — Timestamp τελευταίας ευρετηρίασης
 ```
@@ -310,6 +304,29 @@ wp_cacb_embeddings
 ---
 
 ## Changelog
+
+### v1.4.2 — Professional audit: error handling, dead code cleanup
+
+**Error handling hardening** (`includes/api.php`)
+- HTTP status + array validation στα 2nd calls (OpenAI και Claude) μετά από tool execution — πριν, τυχόν 4xx/5xx στο δεύτερο call επέστρεφε κενό reply αντί για proper error
+- `is_array()` type-check σε όλες τις `json_decode()` καταναλώσεις — αποφυγή PHP notices σε κακοσχηματισμένα payloads
+- Type validation στο Claude `tool_use.input` πριν το χρησιμοποιήσει το `cacb_execute_search_products()`
+- WooCommerce availability guard στο `cacb_get_tool_definitions()` — δεν περνά tool schema στο LLM όταν το WC δεν είναι ενεργό
+
+**Dead code cleanup**
+- Αφαιρέθηκε το orphan option `cacb_wc_categories` — registered αλλά ποτέ δεν διαβαζόταν
+- Αφαιρέθηκε το dead transient `cacb_wc_products_cache` και ο `cacb_maybe_clear_cache()` handler — δεν καλούνταν από κανένα UI
+- Αφαιρέθηκε το product indexing στο RAG engine (`cacb_index_product`, `cacb_auto_reindex_product`, product branch στο batch endpoint) — τα products εξυπηρετούνται μέσω function calling, οπότε κάθε product save προκαλούσε wasted OpenAI embedding call που μετά αγνοούνταν στο retrieval
+- Καθαρίστηκαν `$btnP` references στο `assets/admin.js` (undefined variable από προηγούμενη refactor)
+- Αφαιρέθηκε το `#cacb-rag-index-products` click handler — το κουμπί δεν υπάρχει πλέον
+- Legacy options (`cacb_gemini_*`, `cacb_wc_categories`) παραμένουν στο `uninstall.php` για clean uninstall παλιών εγκαταστάσεων
+
+**Consistency fix** (`includes/settings.php`)
+- `cacb_wc_limit` range διορθώθηκε από [10, 200] σε [1, 20] — ταιριάζει με το clamping στο `api.php`
+- Default μειώθηκε από 50 σε 8 (ταιριάζει με το documented tool behavior)
+- Η περιγραφή του `search_products` tool διαβάζει πλέον δυναμικά το `cacb_wc_limit` αντί για hardcoded "8"
+
+---
 
 ### v1.4.1 — Attribute-based search + temperature fix
 
@@ -445,5 +462,6 @@ wp_cacb_embeddings
 Διαγραφή από **WP Admin → Plugins → Delete**:
 - Αφαιρεί όλα τα options (συμπεριλαμβανομένων των κρυπτογραφημένων API keys) από `wp_options`
 - Αφαιρεί όλα τα rate limit transients
-- Αφαιρεί το WooCommerce product cache
+- Αφαιρεί τα legacy options από παλαιότερες εκδόσεις (`cacb_gemini_*`, `cacb_wc_categories`)
+- Drop των tables `wp_cacb_logs` και `wp_cacb_embeddings`
 - Δεν αφήνει τίποτα πίσω στη βάση
