@@ -396,18 +396,38 @@ function cacb_handle_chat( WP_REST_Request $request ) {
 }
 
 // ── Provider: OpenAI ──────────────────────────────────────────────────────────
+
+/**
+ * GPT-5 and o1/o3 reasoning models require 'max_completion_tokens' and do not
+ * accept the legacy 'max_tokens' parameter. They also reject non-default
+ * temperature values — only temperature=1 is allowed.
+ */
+function cacb_openai_is_new_family( string $model ): bool {
+    return str_starts_with( $model, 'gpt-5' )
+        || str_starts_with( $model, 'o1' )
+        || str_starts_with( $model, 'o3' );
+}
+
 function cacb_call_openai( array $client_messages, string $api_key, string $model, int $max_tokens, string $system_prompt, array $tools = [] ) {
     $messages = array_merge(
         [ [ 'role' => 'system', 'content' => $system_prompt ] ],
         $client_messages
     );
 
+    $is_new = cacb_openai_is_new_family( $model );
+
     $payload = [
-        'model'       => $model,
-        'messages'    => $messages,
-        'max_tokens'  => $max_tokens,
-        'temperature' => 0.2,
+        'model'    => $model,
+        'messages' => $messages,
     ];
+
+    if ( $is_new ) {
+        $payload['max_completion_tokens'] = $max_tokens;
+        // Reasoning models only accept default temperature (1) — omit entirely
+    } else {
+        $payload['max_tokens']  = $max_tokens;
+        $payload['temperature'] = 0.2;
+    }
 
     if ( ! empty( $tools ) ) {
         $payload['tools'] = [ [
@@ -464,15 +484,21 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
             'content'      => $tool_result,
         ];
 
+        $payload2 = [
+            'model'    => $model,
+            'messages' => $messages,
+        ];
+        if ( $is_new ) {
+            $payload2['max_completion_tokens'] = $max_tokens;
+        } else {
+            $payload2['max_tokens']  = $max_tokens;
+            $payload2['temperature'] = 0.2;
+        }
+
         $response2 = wp_remote_post( 'https://api.openai.com/v1/chat/completions', [
             'timeout' => 30,
             'headers' => $headers,
-            'body'    => wp_json_encode( [
-                'model'       => $model,
-                'messages'    => $messages,
-                'max_tokens'  => $max_tokens,
-                'temperature' => 0.2,
-            ] ),
+            'body'    => wp_json_encode( $payload2 ),
         ] );
 
         if ( is_wp_error( $response2 ) ) {

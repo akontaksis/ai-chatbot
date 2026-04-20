@@ -133,16 +133,21 @@ function cacb_do_key_test( string $provider ) {
             if ( empty( $key ) ) {
                 return new WP_Error( 'no_key', __( 'Δεν υπάρχει αποθηκευμένο API key.', 'smart-ai-chatbot' ) );
             }
+            $payload = [
+                'model'    => $model,
+                'messages' => [ [ 'role' => 'user', 'content' => 'Hi' ] ],
+            ];
+            if ( cacb_openai_is_new_family( $model ) ) {
+                $payload['max_completion_tokens'] = 5;
+            } else {
+                $payload['max_tokens'] = 5;
+            }
             $res = wp_remote_post( 'https://api.openai.com/v1/chat/completions', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $key,
                     'Content-Type'  => 'application/json',
                 ],
-                'body'    => wp_json_encode( [
-                    'model'      => $model,
-                    'messages'   => [ [ 'role' => 'user', 'content' => 'Hi' ] ],
-                    'max_tokens' => 5,
-                ] ),
+                'body'    => wp_json_encode( $payload ),
                 'timeout' => 20,
             ] );
             if ( is_wp_error( $res ) ) return $res;
