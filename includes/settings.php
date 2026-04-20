@@ -182,7 +182,7 @@ function cacb_sanitize_option( $value ) {
     // ── Whitelisted enum fields ───────────────────────────────────────────────
     $whitelists = [
         'cacb_provider'        => [ 'openai', 'claude' ],
-        'cacb_model'           => [ 'gpt-5-nano', 'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo' ],
+        'cacb_model'           => [ 'gpt-5-nano', 'gpt-5-mini', 'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo' ],
         'cacb_claude_model'    => [ 'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001' ],
         'cacb_bubble_position' => [ 'right', 'left' ],
     ];
@@ -525,6 +525,7 @@ function cacb_render_providers_page(): void {
                     <?php
                     $models = [
                         'gpt-5-nano'    => 'GPT-5 Nano (Νέο, γρήγορο & οικονομικό)',
+                        'gpt-5-mini'    => 'GPT-5 Mini (Νέο, ισχυρό & γρήγορο)',
                         'gpt-4o-mini'   => 'GPT-4o Mini (Γρήγορο & φθηνό — προτεινόμενο)',
                         'gpt-4o'        => 'GPT-4o (Πιο έξυπνο, πιο ακριβό)',
                         'gpt-3.5-turbo' => 'GPT-3.5 Turbo (Φθηνότατο)',
