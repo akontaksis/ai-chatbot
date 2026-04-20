@@ -517,6 +517,7 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
 
         $reply = $body2['choices'][0]['message']['content'] ?? '';
         if ( empty( $reply ) ) {
+            error_log( '[CACB] OpenAI empty reply (2nd call). model=' . $model . ' choice=' . wp_json_encode( $body2['choices'][0] ?? [] ) );
             return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
         }
         return $reply;
@@ -525,6 +526,7 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
     // ── Direct answer (no tool call) ──────────────────────────────────────────
     $reply = $asst_msg['content'] ?? '';
     if ( empty( $reply ) ) {
+        error_log( '[CACB] OpenAI empty reply (direct). model=' . $model . ' finish=' . $finish . ' choice=' . wp_json_encode( $choice ) );
         return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
     }
     return $reply;
