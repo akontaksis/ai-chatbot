@@ -1,6 +1,13 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
+// ── Nonce refresh endpoint (called when nonce expires after 12-24h) ───────────
+add_action( 'wp_ajax_cacb_refresh_nonce',        'cacb_ajax_refresh_nonce' );
+add_action( 'wp_ajax_nopriv_cacb_refresh_nonce', 'cacb_ajax_refresh_nonce' );
+function cacb_ajax_refresh_nonce(): void {
+    wp_send_json_success( [ 'nonce' => wp_create_nonce( 'cacb_chat_nonce' ) ] );
+}
+
 // ── Register REST routes ──────────────────────────────────────────────────────
 add_action( 'rest_api_init', 'cacb_register_routes' );
 function cacb_register_routes() {

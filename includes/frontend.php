@@ -22,6 +22,7 @@ function cacb_enqueue_assets() {
     wp_localize_script( 'cacb-chat', 'cacbConfig', [
         'apiUrl'         => esc_url( rest_url( 'cacb/v1/chat' ) ),
         'productUrl'     => esc_url( rest_url( 'cacb/v1/product/' ) ),
+        'ajaxUrl'        => esc_url( admin_url( 'admin-ajax.php' ) ),
         'nonce'          => wp_create_nonce( 'cacb_chat_nonce' ),
         'welcomeMessage' => esc_html( get_option( 'cacb_welcome_message', 'Γεια σας! Πώς μπορώ να σας εξυπηρετήσω;' ) ),
         'errorMessage'   => esc_html__( 'Κάτι πήγε στραβά. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ),

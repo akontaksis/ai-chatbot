@@ -213,6 +213,19 @@
     function showTyping() { typingEl.hidden = false; scrollToBottom(); }
     function hideTyping() { typingEl.hidden = true; }
 
+    // ── Refresh expired nonce ─────────────────────────────────────────────────
+    async function refreshNonce() {
+        try {
+            const res  = await fetch( cfg.ajaxUrl + '?action=cacb_refresh_nonce' );
+            const data = await res.json();
+            if ( data.success && data.data && data.data.nonce ) {
+                cfg.nonce = data.data.nonce;
+                return true;
+            }
+        } catch {}
+        return false;
+    }
+
     // ── Send message via REST API ─────────────────────────────────────────────
     async function sendMessage() {
         const text = inputEl.value.trim();
@@ -229,11 +242,23 @@
         saveHistory();
 
         try {
-            const res = await fetch( cfg.apiUrl, {
+            let res = await fetch( cfg.apiUrl, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify( { messages: chatHistory, nonce: cfg.nonce } ),
             } );
+
+            // Auto-refresh nonce if expired and retry once
+            if ( res.status === 403 ) {
+                const refreshed = await refreshNonce();
+                if ( refreshed ) {
+                    res = await fetch( cfg.apiUrl, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify( { messages: chatHistory, nonce: cfg.nonce } ),
+                    } );
+                }
+            }
 
             const data = await res.json();
             hideTyping();
