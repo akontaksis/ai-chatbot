@@ -313,6 +313,21 @@ function cacb_settings_page() {
                         </label>
                         <p class="description"><?php esc_html_e( 'Απενεργοποίησε αν θέλεις το chatbot να απαντά μόνο βάσει System Prompt και RAG.', 'smart-ai-chatbot' ); ?></p>
 
+                        <p style="margin-top:14px;margin-bottom:4px">
+                            <label for="cacb_wc_limit">
+                                <strong><?php esc_html_e( 'Μέγιστα αποτελέσματα ανά αναζήτηση', 'smart-ai-chatbot' ); ?></strong>
+                            </label>
+                        </p>
+                        <input type="number"
+                               id="cacb_wc_limit"
+                               name="cacb_wc_limit"
+                               value="<?php echo esc_attr( cacb_get( 'cacb_wc_limit', 8 ) ); ?>"
+                               min="1" max="20" step="1"
+                               class="small-text" />
+                        <p class="description">
+                            <?php esc_html_e( 'Πόσα προϊόντα να επιστρέφει το search_products tool (1-20, default 8).', 'smart-ai-chatbot' ); ?>
+                        </p>
+
                     <?php endif; ?>
                 </div>
 
