@@ -329,8 +329,10 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
                     $text_keys = [ 'title', 'description', 'text', 'editor', 'content',
                                    'html', 'caption', 'button_text', 'heading', 'sub_title' ];
                     if ( in_array( $key, $text_keys, true ) ) {
-                        // Strip shortcodes (Elementor dynamic tags, WP shortcodes)
-                        $clean = wp_strip_all_tags( strip_shortcodes( $value ) );
+                        // Strip Elementor dynamic tags (e.g. [elementor-tag id="..." name="..." settings="..."])
+                        $clean = preg_replace( '/\[elementor-tag[^\]]*\]/i', '', $value );
+                        // Strip any other registered shortcodes + HTML tags
+                        $clean = wp_strip_all_tags( strip_shortcodes( $clean ) );
                         if ( strlen( trim( $clean ) ) > 4 ) {
                             $texts[] = trim( $clean );
                         }
@@ -343,8 +345,9 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
         }
     }
 
-    // Default: standard post_content — strip shortcodes + HTML
-    return wp_strip_all_tags( strip_shortcodes( $post->post_content ) );
+    // Default: standard post_content — strip Elementor tags + shortcodes + HTML
+    $clean = preg_replace( '/\[elementor-tag[^\]]*\]/i', '', $post->post_content );
+    return wp_strip_all_tags( strip_shortcodes( $clean ) );
 }
 
 /**
@@ -690,49 +693,67 @@ function cacb_rag_add_indexed_list( array $data ): array {
     global $wpdb;
     $table = $wpdb->prefix . 'cacb_embeddings';
 
-    // Aggregate: total chunks + last indexed per page + the stored hash from chunk 0
+    // Fetch all chunks for all indexed pages, grouped per page
     // phpcs:disable WordPress.DB.DirectDatabaseQuery
-    $rows = $wpdb->get_results(
-        "SELECT
-            e.object_id,
-            COUNT(*) AS chunks,
-            MAX(e.indexed_at) AS indexed_at,
-            MAX(CASE WHEN e.chunk_index = 0 THEN e.content_hash END) AS stored_hash,
-            MAX(CASE WHEN e.chunk_index = 0 THEN e.chunk_text END) AS preview
-         FROM {$table} e
-         WHERE e.object_type = 'page'
-         GROUP BY e.object_id
-         ORDER BY indexed_at DESC"
+    $chunks = $wpdb->get_results(
+        "SELECT object_id, chunk_index, chunk_text, content_hash, indexed_at
+         FROM {$table}
+         WHERE object_type = 'page'
+         ORDER BY object_id, chunk_index ASC"
     );
     // phpcs:enable
 
+    // Group chunks by object_id
+    $grouped = [];
+    foreach ( $chunks as $c ) {
+        $grouped[ (int) $c->object_id ][] = $c;
+    }
+
     $total_chunks = 0;
     $items        = [];
-    foreach ( $rows as $row ) {
-        $id   = (int) $row->object_id;
+    foreach ( $grouped as $id => $page_chunks ) {
         $post = get_post( $id );
         if ( ! $post ) continue;
 
-        // Compute current hash to detect staleness (content has changed since indexing)
+        // Sort by chunk_index ascending
+        usort( $page_chunks, static function ( $a, $b ) {
+            return (int) $a->chunk_index <=> (int) $b->chunk_index;
+        } );
+
+        // Stored hash is on chunk 0 only
+        $stored_hash  = $page_chunks[0]->content_hash ?? '';
         $current_text = cacb_extract_page_text( $id, $post );
         $current_hash = md5( $post->post_title . $current_text );
-        $stale        = $row->stored_hash && $current_hash !== $row->stored_hash;
+        $stale        = $stored_hash && $current_hash !== $stored_hash;
 
-        // Clean preview: strip the leading "Title\n\n" that we prepend during indexing
-        $preview = (string) $row->preview;
-        $preview = preg_replace( '/^' . preg_quote( $post->post_title, '/' ) . "\s*\n+/u", '', $preview );
-        $preview = wp_trim_words( $preview, 30, '…' );
+        // Strip the leading "Title\n\n" that indexing prepends to chunks
+        $title_prefix = '/^' . preg_quote( $post->post_title, '/' ) . "\s*\n+/u";
+        $chunk_texts  = array_map( static function ( $c ) use ( $title_prefix ) {
+            return trim( (string) preg_replace( $title_prefix, '', (string) $c->chunk_text ) );
+        }, $page_chunks );
 
-        $total_chunks += (int) $row->chunks;
-        $items[]       = [
-            'title'   => $post->post_title ?: '(untitled)',
-            'url'     => get_permalink( $id ),
-            'chunks'  => (int) $row->chunks,
-            'ago'     => human_time_diff( strtotime( $row->indexed_at ), time() ),
-            'stale'   => $stale,
-            'preview' => $preview,
+        $latest        = max( array_map( static fn( $c ) => strtotime( $c->indexed_at ), $page_chunks ) );
+        $total_chunks += count( $page_chunks );
+
+        $items[] = [
+            'title'       => $post->post_title ?: '(untitled)',
+            'url'         => get_permalink( $id ),
+            'chunks'      => count( $page_chunks ),
+            'chunk_texts' => $chunk_texts,
+            'ago'         => human_time_diff( $latest, time() ),
+            'stale'       => $stale,
+            '_sort'       => $latest,
         ];
     }
+
+    // Sort items by most recent indexing first, then strip sort helper
+    usort( $items, static function ( $a, $b ) {
+        return $b['_sort'] <=> $a['_sort'];
+    } );
+    $items = array_map( static function ( $it ) {
+        unset( $it['_sort'] );
+        return $it;
+    }, $items );
 
     $data['items']        = $items;
     $data['total_chunks'] = $total_chunks;

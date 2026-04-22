@@ -103,51 +103,108 @@
             summary += '</p>';
             $ragStatus.html( summary );
 
-            // List of indexed pages
+            // List of indexed pages with pagination
             if ( ! items.length ) {
                 $indexed.html( '<p style="color:#888;font-style:italic;margin:0">Καμία σελίδα δεν έχει ευρετηριαστεί ακόμα.</p>' );
                 return;
             }
 
-            var listHtml = '<h3 style="margin:0 0 10px;font-size:13px;color:#555;text-transform:uppercase;letter-spacing:.5px">Ευρετηριασμένες σελίδες</h3>';
-            listHtml += '<div style="display:flex;flex-direction:column;gap:10px">';
-
-            items.forEach( function ( it ) {
-                var borderColor = it.stale ? '#dba617' : '#e0e0e0';
-                var badge       = it.stale
-                    ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff4dd;color:#8a6100;font-size:11px;font-weight:600;margin-left:8px">⚠ Χρειάζεται re-index</span>'
-                    : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#edfaef;color:#0a6321;font-size:11px;font-weight:600;margin-left:8px">✓ Ενημερωμένη</span>';
-
-                listHtml += '<div style="border:1px solid ' + borderColor + ';border-left:3px solid ' + borderColor
-                    + ';border-radius:4px;padding:10px 12px;background:#fff">'
-                    + '<div style="display:flex;justify-content:space-between;align-items:start;gap:10px;flex-wrap:wrap">'
-                    + '<div style="flex:1;min-width:200px">'
-                    + '<a href="' + esc( it.url ) + '" target="_blank" rel="noopener" '
-                    + 'style="color:#2271b1;text-decoration:none;font-weight:600;font-size:14px">'
-                    + esc( it.title ) + '</a>'
-                    + badge
-                    + '<div style="color:#8c8f94;font-size:11px;word-break:break-all;margin-top:2px">' + esc( it.url ) + '</div>'
-                    + '</div>'
-                    + '<div style="color:#646970;font-size:12px;white-space:nowrap">'
-                    + '<span style="background:#e7f3ff;color:#0a4b78;padding:2px 8px;border-radius:10px;font-weight:600">'
-                    + it.chunks + ' chunks</span>'
-                    + '<div style="margin-top:3px;text-align:right">πριν ' + esc( it.ago ) + '</div>'
-                    + '</div>'
-                    + '</div>';
-
-                if ( it.preview ) {
-                    listHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #f0f0f1;'
-                        + 'color:#50575e;font-size:12px;font-style:italic;line-height:1.5">'
-                        + '"' + esc( it.preview ) + '"'
-                        + '</div>';
-                }
-
-                listHtml += '</div>';
-            } );
-            listHtml += '</div>';
-            $indexed.html( listHtml );
+            // Cache items on the container for pagination navigation
+            $indexed.data( 'items', items );
+            $indexed.data( 'current-page', 1 );
+            renderIndexedPage( $indexed, 1 );
         } );
     }
+
+    var PAGES_PER_VIEW = 5;
+
+    function renderIndexedPage( $indexed, pageNum ) {
+        var items       = $indexed.data( 'items' ) || [];
+        var totalPages  = Math.max( 1, Math.ceil( items.length / PAGES_PER_VIEW ) );
+        pageNum         = Math.min( Math.max( 1, pageNum ), totalPages );
+        $indexed.data( 'current-page', pageNum );
+
+        var start = ( pageNum - 1 ) * PAGES_PER_VIEW;
+        var slice = items.slice( start, start + PAGES_PER_VIEW );
+
+        var html = '<h3 style="margin:0 0 10px;font-size:13px;color:#555;text-transform:uppercase;letter-spacing:.5px">'
+            + 'Ευρετηριασμένες σελίδες (' + items.length + ')</h3>'
+            + '<div style="display:flex;flex-direction:column;gap:10px">';
+
+        slice.forEach( function ( it, idx ) {
+            var borderColor = it.stale ? '#dba617' : '#e0e0e0';
+            var badge       = it.stale
+                ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff4dd;color:#8a6100;font-size:11px;font-weight:600;margin-left:8px">⚠ Χρειάζεται re-index</span>'
+                : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#edfaef;color:#0a6321;font-size:11px;font-weight:600;margin-left:8px">✓ Ενημερωμένη</span>';
+
+            html += '<div style="border:1px solid ' + borderColor + ';border-left:3px solid ' + borderColor
+                + ';border-radius:4px;padding:10px 12px;background:#fff">'
+                + '<div style="display:flex;justify-content:space-between;align-items:start;gap:10px;flex-wrap:wrap">'
+                + '<div style="flex:1;min-width:200px">'
+                + '<a href="' + esc( it.url ) + '" target="_blank" rel="noopener" '
+                + 'style="color:#2271b1;text-decoration:none;font-weight:600;font-size:14px">'
+                + esc( it.title ) + '</a>'
+                + badge
+                + '<div style="color:#8c8f94;font-size:11px;word-break:break-all;margin-top:2px">' + esc( it.url ) + '</div>'
+                + '</div>'
+                + '<div style="color:#646970;font-size:12px;white-space:nowrap">'
+                + '<span style="background:#e7f3ff;color:#0a4b78;padding:2px 8px;border-radius:10px;font-weight:600">'
+                + it.chunks + ' chunks</span>'
+                + '<div style="margin-top:3px;text-align:right">πριν ' + esc( it.ago ) + '</div>'
+                + '</div>'
+                + '</div>';
+
+            // Collapsible chunks section
+            var chunkTexts = it.chunk_texts || [];
+            if ( chunkTexts.length ) {
+                var realIdx = start + idx;
+                html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #f0f0f1">'
+                    + '<button type="button" class="button button-small cacb-toggle-chunks" data-idx="' + realIdx + '" '
+                    + 'style="margin-bottom:6px">📄 Εμφάνιση chunks (' + chunkTexts.length + ')</button>'
+                    + '<div class="cacb-chunks-body" data-idx="' + realIdx + '" style="display:none;margin-top:6px">';
+                chunkTexts.forEach( function ( txt, ci ) {
+                    html += '<div style="background:#f6f7f7;border-left:3px solid #2271b1;padding:8px 10px;margin-bottom:6px;'
+                        + 'font-size:12px;line-height:1.55;color:#1d2327;border-radius:3px;white-space:pre-wrap">'
+                        + '<div style="font-weight:600;color:#2271b1;font-size:11px;margin-bottom:4px">CHUNK ' + ( ci + 1 ) + '</div>'
+                        + esc( txt )
+                        + '</div>';
+                } );
+                html += '</div></div>';
+            }
+
+            html += '</div>';
+        } );
+        html += '</div>';
+
+        // Pagination controls
+        if ( totalPages > 1 ) {
+            html += '<div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:14px">'
+                + '<button type="button" class="button cacb-page-nav" data-page="' + ( pageNum - 1 ) + '"'
+                + ( pageNum === 1 ? ' disabled' : '' ) + '>‹ Προηγ.</button>'
+                + '<span style="font-size:13px;color:#50575e">Σελίδα ' + pageNum + ' από ' + totalPages + '</span>'
+                + '<button type="button" class="button cacb-page-nav" data-page="' + ( pageNum + 1 ) + '"'
+                + ( pageNum === totalPages ? ' disabled' : '' ) + '>Επόμ. ›</button>'
+                + '</div>';
+        }
+
+        $indexed.html( html );
+    }
+
+    // Toggle chunks body
+    $( document ).on( 'click', '.cacb-toggle-chunks', function () {
+        var idx   = $( this ).data( 'idx' );
+        var $body = $( '.cacb-chunks-body[data-idx="' + idx + '"]' );
+        var open  = $body.is( ':visible' );
+        $body.toggle();
+        $( this ).text( ( open ? '📄 Εμφάνιση chunks (' : '📄 Απόκρυψη chunks (' )
+            + $body.children().length + ')' );
+    } );
+
+    // Pagination
+    $( document ).on( 'click', '.cacb-page-nav', function () {
+        var p = parseInt( $( this ).data( 'page' ), 10 );
+        renderIndexedPage( $( '#cacb-rag-indexed-wrap' ), p );
+    } );
 
     function esc( str ) {
         return $( '<div>' ).text( String( str ) ).html();
