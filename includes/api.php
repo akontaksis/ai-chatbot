@@ -358,7 +358,12 @@ function cacb_execute_search_products( array $args ): string {
     }
 
     if ( ! empty( $args['on_sale'] ) ) {
-        $query_args['on_sale'] = true;
+        $sale_meta = [ 'key' => '_sale_price', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ];
+        if ( ! empty( $query_args['meta_query'] ) ) {
+            $query_args['meta_query'][] = $sale_meta;
+        } else {
+            $query_args['meta_query'] = [ $sale_meta ]; // phpcs:ignore WordPress.DB.SlowDBQuery
+        }
     }
 
     if ( ! empty( $args['keyword'] ) ) {
