@@ -1,34 +1,49 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.2**
+**Version 1.4.6**
 
-AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**.
-Production-ready με **Function Calling** για WooCommerce προϊόντα (φιλτράρισμα ανά κατηγορία, χρονιά, ποικιλία, περιοχή, χώρα, γλυκύτητα, τιμή), **RAG** για FAQ/σελίδες, **product cards**, AES-256-GCM encryption, rate limiting, και πλήρη admin controls.
+AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
 ---
 
-## Εγκατάσταση
+## Περιεχόμενα
+
+- [Γρήγορη εκκίνηση](#γρήγορη-εκκίνηση)
+- [AI Providers](#ai-providers)
+- [Αρχιτεκτονική](#αρχιτεκτονική)
+- [WooCommerce Integration — Function Calling](#woocommerce-integration--function-calling)
+- [RAG — Knowledge Base](#rag--knowledge-base-semantic-search)
+- [Ασφάλεια](#ασφάλεια)
+- [Αποθήκευση & Διαγραφή Δεδομένων](#αποθήκευση--διαγραφή-δεδομένων)
+- [Limits & Configuration](#limits--configuration)
+- [REST API Reference](#rest-api-reference)
+- [Changelog](#changelog)
+- [Roadmap](#roadmap)
+
+---
+
+## Γρήγορη εκκίνηση
 
 1. Ανέβασε τον φάκελο `smart-ai-chatbot` στο `/wp-content/plugins/`
 2. Ενεργοποίησε το plugin από **WP Admin → Plugins**
-3. Πήγαινε στο **Settings → AI Chatbot** και:
-   - Tab **AI Providers**: επίλεξε provider, συμπλήρωσε API key, επίλεξε model, ρύθμισε limits
-   - Tab **Ρυθμίσεις**: System Prompt, WooCommerce, Logging, Εμφάνιση
+3. Ρύθμισε το από **Settings → AI Chatbot**:
+   - **AI Providers**: provider, API key, model, limits
+   - **Ρυθμίσεις**: System Prompt, WooCommerce, Logging, εμφάνιση
+   - **Knowledge Base** (προαιρετικό): ενεργοποίηση RAG, index σελίδων
 
 ---
 
 ## AI Providers
 
 ### OpenAI (GPT)
-Αποκτά API key από [platform.openai.com](https://platform.openai.com).
+API key από [platform.openai.com](https://platform.openai.com).
 
-| Model | Περιγραφή |
-|---|---|
-| `gpt-5-nano` | Νέο, γρήγορο & οικονομικό |
-| `gpt-5-mini` | Νέο, ισχυρό & γρήγορο |
-| `gpt-4o-mini` | Γρήγορο & φθηνό — προτεινόμενο |
-| `gpt-4o` | Πιο έξυπνο, πιο ακριβό |
-| `gpt-3.5-turbo` | Φθηνότατο |
+| Model | Περιγραφή | Function Calling |
+|---|---|---|
+| `gpt-4o` | Κορυφαία ποιότητα, άριστα ελληνικά | ✓ Parallel tool calls |
+| `gpt-4o-mini` | Γρήγορο & φθηνό — **προτεινόμενο** | ✓ Parallel tool calls |
+| `gpt-5-mini` | Νέα γενιά, reasoning model | ✓ Parallel tool calls |
+| `gpt-5-nano` | Νέα γενιά, οικονομικό | ✓ Parallel tool calls |
 
 ```php
 // wp-config.php (προαιρετικό — έχει προτεραιότητα έναντι DB)
@@ -36,21 +51,255 @@ define( 'CACB_OPENAI_API_KEY', 'sk-...' );
 ```
 
 ### Anthropic (Claude)
-Αποκτά API key από [console.anthropic.com](https://console.anthropic.com).
+API key από [console.anthropic.com](https://console.anthropic.com).
 
-| Model | Περιγραφή |
-|---|---|
-| `claude-sonnet-4-6` | Ισορροπία ταχύτητας/ποιότητας — προτεινόμενο |
-| `claude-opus-4-6` | Πιο έξυπνο, πιο ακριβό |
-| `claude-haiku-4-5-20251001` | Γρήγορο & φθηνό |
+| Model | Περιγραφή | Function Calling |
+|---|---|---|
+| `claude-sonnet-4-6` | Ισορροπία ταχύτητας/ποιότητας — **προτεινόμενο** | ✓ 1 tool per turn |
+| `claude-opus-4-7` | Κορυφαία ποιότητα, reasoning | ✓ 1 tool per turn |
+| `claude-haiku-4-5-20251001` | Γρήγορο & φθηνό | ✓ 1 tool per turn |
 
 ```php
 define( 'CACB_CLAUDE_API_KEY', 'sk-ant-...' );
 ```
 
+> **Σημείωση:** Το Claude δεν παρέχει Embeddings API. Αν χρησιμοποιείς Claude με RAG, χρειάζεσαι ένα επιπλέον OpenAI key (αποθηκεύεται στο `cacb_rag_openai_key`) αποκλειστικά για το generation των embeddings.
+
 ---
 
-## System Prompt — Παράδειγμα
+## Αρχιτεκτονική
+
+```
+smart-ai-chatbot/
+├── smart-ai-chatbot.php     ← Bootstrap, activation hooks, DB migrations, constants
+├── uninstall.php            ← Καθαρισμός βάσης κατά τη διαγραφή του plugin
+├── includes/
+│   ├── settings.php         ← Admin UI, WP options, AES-256-GCM encryption
+│   ├── embeddings.php       ← RAG engine: chunking, embeddings, cosine similarity
+│   ├── api.php              ← REST API, AI providers, function calling, rate limiting
+│   ├── logs.php             ← Conversation logging, admin viewer, retention
+│   └── frontend.php         ← Asset enqueue, chat HTML injection
+└── assets/
+    ├── chat.js              ← Chat UI, product cards, localStorage history, markdown
+    ├── chat.css             ← Chat styles, animations
+    └── admin.js             ← Admin panel logic: key test, RAG index progress
+```
+
+### Data Flow
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  User (JS)   │ ──► │ POST /cacb/v1/   │ ──► │  Provider       │
+│  chat.js     │     │      chat        │     │  OpenAI/Claude  │
+└──────────────┘     └──────────────────┘     └────────┬────────┘
+       ▲                      │                        │
+       │                      ▼                        │ (if tool_call)
+       │              ┌───────────────┐                ▼
+       │              │ RAG context   │        ┌─────────────────┐
+       │              │ (cosine sim)  │        │ search_products │
+       │              └───────────────┘        │ wc_get_products │
+       │                      │                └────────┬────────┘
+       │                      ▼                         │
+       │              ┌───────────────┐                 │
+       └──────────────┤ REST response │◄────────────────┘
+                      └───────────────┘  (2nd provider call with tool result)
+```
+
+### REST Endpoints
+
+| Endpoint | Method | Auth | Σκοπός |
+|---|---|---|---|
+| `/cacb/v1/chat` | POST | Nonce | Αποστολή μηνύματος → AI response |
+| `/cacb/v1/product/{id}` | GET | Public | Δεδομένα product card (όνομα, τιμή, εικόνα) |
+| `wp-admin/admin-ajax.php?action=cacb_add_to_cart` | POST | Nonce | Add to cart από chat |
+| `wp-admin/admin-ajax.php?action=cacb_refresh_nonce` | POST | Public | Refresh nonce μετά από 12-24h |
+
+---
+
+## WooCommerce Integration — Function Calling
+
+Αν το WooCommerce είναι ενεργό, το plugin εκθέτει στο LLM ένα **tool** με όνομα `search_products`. Το LLM αποφασίζει πότε και με ποια φίλτρα να το καλέσει. Η αναζήτηση τρέχει **server-side** μέσω `wc_get_products()` — **τίποτα δεν εκτίθεται στο LLM από τον κατάλογο**, εκτός από τα αποτελέσματα του κάθε query.
+
+### 2-turn Flow
+
+1. **1ο API call** — αποστολή μηνύματος + tool definition
+2. LLM αποφασίζει να καλέσει `search_products` με συγκεκριμένα φίλτρα
+3. PHP εκτελεί `wc_get_products()` με τα φίλτρα
+4. **2ο API call** — τα αποτελέσματα επιστρέφονται στο LLM για τη φυσική γλωσσική απάντηση
+5. LLM απαντά με `[PRODUCT:ID]` markers → JavaScript εμφανίζει product cards
+
+### Tool Parameters
+
+| Parameter | Τύπος | Πηγή | Παράδειγμα |
+|---|---|---|---|
+| `keyword` | string | WP full-text search (`s=`) | "Gerovassiliou" |
+| `category` | enum | WC product categories | "krasia" |
+| `min_price` | number | meta query σε `_price` | 30 (για "πάνω από 30€") |
+| `max_price` | number | meta query σε `_price` | 15 (για "κάτω από 15€") |
+| `sort_by_price` | enum | `asc` / `desc` | "asc" (για "φθηνότερο") |
+| `on_sale` | boolean | meta query σε `_sale_price > 0` | true (για "προσφορές") |
+| `year` | enum | WC attribute `pa_xronia` | "2019" |
+| `grape_variety` | enum | WC attribute `pa_poikilia` | "Ασύρτικο" |
+| `region` | enum | WC attribute `pa_perioxi` | "Σαντορίνη" |
+| `origin` | enum | WC attribute `pa_proeleusi` | "Γαλλία" |
+| `sweetness` | enum | WC attribute `pa_glykytita` | "Ξηρό" |
+
+> **Dynamic enums:** Οι τιμές για `category`, `year`, `grape_variety`, `region`, `origin`, `sweetness` διαβάζονται **δυναμικά** από τα WooCommerce attributes/categories του site. Κάθε νέο attribute term εμφανίζεται αυτόματα στο tool schema χωρίς code change.
+
+### Provider Differences
+
+| | OpenAI | Claude |
+|---|---|---|
+| Tool schema | `{type: "function", function: {...}}` | `{name, description, input_schema}` |
+| Tool trigger | `finish_reason === "tool_calls"` | `stop_reason === "tool_use"` |
+| Tool result | `role: "tool"` + `tool_call_id` | `role: "user"` + `type: "tool_result"` |
+| Parallel tools | ✓ Ναι, multiple tool_calls σε ένα turn | ✗ Μόνο 1 tool per turn |
+| System prompt | Μέσα στα `messages[]` | Ξεχωριστό πεδίο `system:` |
+
+### Reliability Fixes (v1.4.6)
+
+Το `wc_get_products()` με `min_price`, `max_price`, `orderby => 'price'`, και `on_sale => true` στηρίζεται στον πίνακα `wc_product_meta_lookup` του WooCommerce, που σε ορισμένες εγκαταστάσεις δεν είναι πλήρως συγχρονισμένος. Αυτό προκαλούσε **false negatives** (κενά αποτελέσματα ενώ υπήρχαν προϊόντα). Η λύση:
+
+- **Price filtering:** `meta_query` απευθείας στο `_price` meta
+- **Price sorting:** `orderby => 'meta_value_num'` με `meta_key => '_price'`
+- **On-sale filter:** `meta_query` στο `_sale_price > 0`
+
+Αυτή η προσέγγιση είναι ανεξάρτητη από το lookup table και δουλεύει παντού.
+
+---
+
+## RAG — Knowledge Base (Semantic Search)
+
+Το RAG χρησιμοποιείται **αποκλειστικά για σελίδες/FAQ** (πολιτική επιστροφών, αποστολή, επικοινωνία, about). Τα **WooCommerce προϊόντα εξυπηρετούνται αποκλειστικά μέσω function calling** — δεν αποθηκεύονται στον RAG index.
+
+### Indexing Pipeline
+
+1. Εξαγωγή κειμένου από κάθε σελίδα (υποστήριξη Elementor `_elementor_data`)
+2. Chunking σε **200-word chunks με 40-word overlap** (preserves context across boundaries)
+3. Γένεση embedding μέσω OpenAI `text-embedding-3-small` (1 536 διαστάσεις)
+4. Αποθήκευση στο `wp_cacb_embeddings` με content hash για change detection
+
+### Retrieval Pipeline
+
+1. Embedding της τελευταίας 3 μηνυμάτων (context-aware για follow-ups)
+2. Load όλων των stored embeddings και υπολογισμός **cosine similarity** σε PHP
+3. Filter: score ≥ `0.18` threshold (αποφυγή noise)
+4. Deduplication: μόνο το καλύτερο chunk ανά σελίδα
+5. Top-K (default 5) chunks εισάγονται στο system prompt
+
+### Database Schema
+
+```sql
+CREATE TABLE wp_cacb_embeddings (
+    id           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    object_type  VARCHAR(20)      NOT NULL DEFAULT 'page',
+    object_id    BIGINT UNSIGNED  NOT NULL,
+    chunk_index  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    chunk_text   MEDIUMTEXT,
+    content_hash CHAR(32)         NOT NULL,
+    embedding    LONGTEXT         NOT NULL,   -- JSON float[]
+    dims         SMALLINT UNSIGNED NOT NULL DEFAULT 1536,
+    indexed_at   DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY idx_object (object_type, object_id, chunk_index),
+    KEY        idx_type   (object_type)
+);
+```
+
+### Settings
+
+| Option | Default | Περιγραφή |
+|---|---|---|
+| `cacb_rag_enabled` | `0` | Ενεργοποίηση RAG retrieval |
+| `cacb_rag_top_k` | `5` | Max chunks ανά ερώτηση |
+| `cacb_rag_index_pages` | `0` | Auto-reindex σελίδων κατά το save (async) |
+| `cacb_rag_openai_key` | `''` | OpenAI key για embeddings όταν ο chat provider είναι Claude |
+
+### Scaling Limits
+
+Η τρέχουσα υλοποίηση φορτώνει όλα τα embeddings στη PHP memory για τον similarity υπολογισμό. Πρακτικά όρια:
+
+| Indexed Pages | Performance |
+|---|---|
+| < 200 | Instant — δεν χρειάζεται βελτιστοποίηση |
+| 200 – 2 000 | Αξιόπιστο, ~50–150ms retrieval |
+| 2 000+ | Συνιστάται vector DB (Pinecone/Qdrant) ή caching |
+
+Αρχιτεκτονικά, το plugin είναι έτοιμο να δεχθεί vector DB abstraction — οι μόνες αλλαγές αφορούν τα `cacb_index_page()` και `cacb_rag_retrieve()`.
+
+---
+
+## Ασφάλεια
+
+| Μηχανισμός | Υλοποίηση |
+|---|---|
+| **API key encryption** | AES-256-GCM (authenticated encryption) με 96-bit nonce + 128-bit tag |
+| **Encryption key derivation** | SHA-256(`AUTH_KEY` + `SECURE_AUTH_KEY`) από `wp-config.php` |
+| **Legacy compatibility** | Παλιά AES-256-CBC keys (prefix `cacb_enc:`) αποκρυπτογραφούνται και ανανεώνονται σε GCM στην επόμενη αποθήκευση |
+| **wp-config.php override** | Constants (`CACB_OPENAI_API_KEY`, `CACB_CLAUDE_API_KEY`) για keys εκτός βάσης |
+| **CSRF protection** | WP nonce verification σε κάθε REST/AJAX call |
+| **Rate limiting** | Per-IP (SHA-256 hashed) transients, ρυθμιζόμενο 1–200/hour |
+| **Input sanitization** | `sanitize_text_field()`, `sanitize_textarea_field()`, role whitelist (`user`/`assistant` only) |
+| **Output escaping** | `wp_kses()` με allowlist (`<br>`, `<strong>`, `<em>`, `<a>`) |
+| **Capability enforcement** | `current_user_can('manage_options')` για όλες τις admin ενέργειες |
+| **Enum whitelisting** | `provider`, `model`, `bubble_position` κ.λπ. validated πριν την αποθήκευση |
+| **Message length cap** | 4 000 χαρακτήρες server-side — αποτρέπει API credit drain |
+| **Privacy-first IP** | Στα logs αποθηκεύεται μόνο `hash('sha256', $ip)` — ποτέ raw IP |
+| **Cloudflare-aware IP** | `HTTP_CF_CONNECTING_IP` → `HTTP_X_FORWARDED_FOR` → `HTTP_X_REAL_IP` → `REMOTE_ADDR` |
+| **SSL verification** | `CURLOPT_SSL_VERIFYPEER` ενεργό σε όλα τα outbound calls |
+
+---
+
+## Αποθήκευση & Διαγραφή Δεδομένων
+
+### Πλήρης Χάρτης
+
+| Δεδομένο | Πού | Μορφή | Διάρκεια | Διαγραφή |
+|---|---|---|---|---|
+| OpenAI API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
+| Claude API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
+| IP (rate limit) | `wp_options` transient | SHA-256 hash | 1 ώρα | Αυτόματα ή uninstall |
+| IP (logs) | `wp_cacb_logs` | SHA-256 hash | Configurable | Admin UI ή uninstall |
+| Ιστορικό (browser) | `localStorage` | JSON plaintext | Αόριστη | Κουμπί 🗑 στο chat |
+| Μηνύματα (logs) | `wp_cacb_logs` | Plaintext | Configurable (30d default) | Admin UI ή uninstall |
+| Vector Embeddings | `wp_cacb_embeddings` | JSON float array | Μόνιμη | Admin UI ή uninstall |
+| Ρυθμίσεις plugin | `wp_options` | Plaintext | Μόνιμη | Uninstall |
+
+### API Keys
+
+- **Αποθήκευση:** `wp_options` (κλειδιά: `cacb_api_key`, `cacb_claude_api_key`, `cacb_rag_openai_key`)
+- **Μορφή:** `cacb_enc2:` + Base64(nonce[12] + tag[16] + ciphertext)
+- **Admin view:** Password field — η τιμή **δεν αποστέλλεται ποτέ** πίσω στον browser
+- **Uninstall:** Αυτόματη διαγραφή μέσω `uninstall.php`
+
+> Αν το `openssl` extension δεν είναι διαθέσιμο ή τα WordPress secret keys δεν έχουν οριστεί, το API key **δεν αποθηκεύεται** και εμφανίζεται error στον admin.
+
+### Ιστορικό Συνομιλίας (2 επίπεδα)
+
+**Επίπεδο 1 — Browser (localStorage)**
+- Κλειδί: `cacb_chatHistory`
+- Περιεχόμενο: JSON array με `{role, content}` για context restoration μετά από refresh
+- Στέλνεται σε κάθε request για context, αλλά **δεν ξαναποθηκεύεται** στον server από εκεί
+
+**Επίπεδο 2 — Server (wp_cacb_logs)**
+- Καταγράφεται μόνο το τελευταίο ζεύγος user/bot ανά request (όχι ολόκληρο το ιστορικό)
+- Retention: 30 ημέρες default, ρυθμιζόμενο
+- Auto-prune σε ~10% των writes για αποφυγή overhead
+
+---
+
+## Limits & Configuration
+
+### AI Providers → Limits & Ασφάλεια
+
+| Option | Εύρος | Default | Περιγραφή |
+|---|---|---|---|
+| `cacb_rate_limit` | 1–200 | 20 | Max μηνύματα ανά IP/hour |
+| `cacb_max_tokens` | 100–2000 | 500 | Max μέγεθος απάντησης AI |
+| `cacb_history_limit` | 2–50 | 10 | Recent messages για context |
+| `cacb_wc_limit` | 1–20 | 8 | Max αποτελέσματα `search_products` |
+| `CACB_MAX_MSG_CHARS` | — | 4000 | Max χαρακτήρες ανά μήνυμα user |
+
+### System Prompt — Παράδειγμα για κάβα κρασιών
 
 ```
 Είσαι ο βοηθός του καταστήματος Capitano Lemnos.
@@ -71,399 +320,208 @@ define( 'CACB_CLAUDE_API_KEY', 'sk-ant-...' );
 - Αντικαταβολή (+2€)
 - Τραπεζική μεταφορά
 
-ΕΠΙΚΟΙΝΩΝΙΑ:
-- Email: info@capitanolemnos.gr
-- Τηλ: 22540 XXXXX
-
 Απάντα πάντα στα Ελληνικά με φιλικό τόνο.
 Αν δεν ξέρεις κάτι, πες ότι θα επικοινωνήσει μαζί τους η ομάδα.
-ΜΗΝ δίνεις πληροφορίες για ανταγωνιστές.
 ```
 
 ---
 
-## Αποθήκευση & Διαγραφή Δεδομένων
+## REST API Reference
 
-### API Keys
+### `POST /cacb/v1/chat`
 
-| Στοιχείο | Λεπτομέρεια |
-|---|---|
-| **Πού αποθηκεύονται** | Πίνακας `wp_options` της βάσης δεδομένων WordPress |
-| **Κλειδιά** | `cacb_api_key`, `cacb_claude_api_key` |
-| **Μορφή αποθήκευσης** | Κρυπτογραφημένα — prefix `cacb_enc2:` + Base64(nonce + auth_tag + ciphertext) |
-| **Αλγόριθμος** | AES-256-GCM (authenticated encryption — ανιχνεύει παραποίηση) |
-| **Κλειδί κρυπτογράφησης** | SHA-256(AUTH_KEY + SECURE_AUTH_KEY) από το `wp-config.php` |
-| **Nonce** | 12 bytes τυχαία (random_bytes) — διαφορετικό σε κάθε αποθήκευση |
-| **Auth tag** | 16 bytes — επαληθεύει ακεραιότητα κατά την αποκρυπτογράφηση |
-| **Εναλλακτική αποθήκευση** | Σταθερά στο `wp-config.php` (π.χ. `CACB_OPENAI_API_KEY`) — έχει προτεραιότητα έναντι DB |
-| **Εμφάνιση στο admin** | Password field — η τιμή δεν αποστέλλεται ποτέ στον browser |
-| **Διαγραφή μέσω admin** | Settings → AI Chatbot → κουμπί "Διαγραφή κλειδιού" → `delete_option()` |
-| **Διαγραφή κατά uninstall** | Αυτόματη μέσω `uninstall.php` → `delete_option()` για κάθε κλειδί |
-| **Legacy format** | Παλιές αποθηκεύσεις με AES-256-CBC (prefix `cacb_enc:`) αποκρυπτογραφούνται κανονικά, ανανεώνονται σε GCM στην επόμενη αποθήκευση |
-
-> **Σημείωση:** Αν το `openssl` extension δεν είναι διαθέσιμο ή τα WordPress secret keys δεν έχουν οριστεί, το API key δεν αποθηκεύεται και εμφανίζεται σχετικό μήνυμα λάθους στον admin.
-
----
-
-### IP Address
-
-| Στοιχείο | Λεπτομέρεια |
-|---|---|
-| **Πού αποθηκεύεται (rate limiting)** | Πίνακας `wp_options` ως WordPress transient |
-| **Κλειδί transient** | `_transient_cacb_rl_{SHA-256(IP)}` |
-| **Τιμή** | Ακέραιος — αριθμός μηνυμάτων που έχουν σταλεί |
-| **Διάρκεια** | 1 ώρα (HOUR_IN_SECONDS) — διαγράφεται αυτόματα |
-| **Πού αποθηκεύεται (logs)** | Πίνακας `wp_cacb_logs`, πεδίο `ip_hash` |
-| **Μορφή IP στα logs** | SHA-256(IP) — μονής κατεύθυνσης, δεν αντιστρέφεται |
-| **Headers που ελέγχονται** | `HTTP_CF_CONNECTING_IP` → `HTTP_X_FORWARDED_FOR` → `HTTP_X_REAL_IP` → `REMOTE_ADDR` |
-| **Αρχή ελάχιστων δεδομένων** | Αποθηκεύεται μόνο το hash — η πραγματική IP δεν γράφεται πουθενά |
-| **Διαγραφή transients κατά uninstall** | `DELETE FROM wp_options WHERE option_name LIKE '_transient_cacb_rl_%'` |
-| **Διαγραφή από logs** | Μαζί με τον πίνακα `wp_cacb_logs` κατά το uninstall |
-
----
-
-### Ιστορικό Συνομιλίας
-
-Το ιστορικό αποθηκεύεται **σε δύο επίπεδα** ταυτόχρονα:
-
-#### Επίπεδο 1 — Browser (localStorage)
-
-| Στοιχείο | Λεπτομέρεια |
-|---|---|
-| **Τεχνολογία** | `window.localStorage` — αποθήκευση στον browser του χρήστη |
-| **Κλειδί** | `cacb_chatHistory` |
-| **Περιεχόμενο** | JSON array με `{ role, content }` για κάθε μήνυμα |
-| **Σκοπός** | Επαναφορά συνομιλίας όταν ο χρήστης ανανεώσει τη σελίδα |
-| **Διάρκεια** | Αόριστη — παραμένει μέχρι διαγραφής |
-| **Σταλμένο στον server;** | Ναι — ως payload σε κάθε request (για context), αλλά δεν αποθηκεύεται ξανά |
-| **Διαγραφή από τον χρήστη** | Κουμπί 🗑 στο chat window — καλεί `localStorage.removeItem()` |
-| **Διαγραφή από τον server** | Δεν εφαρμόζεται — βρίσκεται αποκλειστικά στον browser |
-| **Προστασία corrupt data** | Αν δεν είναι έγκυρο JSON array, αγνοείται και ξεκινά νέα συνομιλία |
-
-#### Επίπεδο 2 — Server (βάση δεδομένων)
-
-| Στοιχείο | Λεπτομέρεια |
-|---|---|
-| **Πίνακας** | `wp_cacb_logs` (δημιουργείται αυτόματα κατά την ενεργοποίηση) |
-| **Πεδία** | `id`, `created_at`, `provider`, `model`, `user_msg`, `bot_reply`, `ip_hash` |
-| **Τι καταγράφεται** | Τελευταίο ζεύγος ερώτησης–απάντησης ανά request (όχι ολόκληρο το ιστορικό) |
-| **Πότε γράφεται** | Μετά από κάθε επιτυχή απάντηση AI |
-| **Ενεργοποίηση** | Settings → AI Chatbot → Logging — μπορεί να απενεργοποιηθεί |
-| **Retention** | Ρυθμιζόμενο (default: 30 ημέρες) — αυτόματη διαγραφή παλαιών εγγραφών |
-| **Διαγραφή από admin** | Settings → Logs → "Διαγραφή όλων" → `TRUNCATE TABLE wp_cacb_logs` |
-| **Διαγραφή κατά uninstall** | `DROP TABLE IF EXISTS wp_cacb_logs` |
-| **Πρόσβαση** | Μόνο χρήστες με `manage_options` capability |
-
----
-
-### Πλήρης Χάρτης Δεδομένων
-
-| Δεδομένο | Πού | Μορφή | Διάρκεια | Διαγραφή |
-|---|---|---|---|---|
-| OpenAI API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
-| Claude API Key | `wp_options` | AES-256-GCM | Μόνιμη | Admin UI ή uninstall |
-| IP (rate limit) | `wp_options` transient | SHA-256 hash | 1 ώρα | Αυτόματα ή uninstall |
-| IP (logs) | `wp_cacb_logs` | SHA-256 hash | Configurable | Admin UI ή uninstall |
-| Ιστορικό (browser) | `localStorage` | JSON plaintext | Αόριστη | Κουμπί 🗑 στο chat |
-| Μηνύματα (logs) | `wp_cacb_logs` | Plaintext | Configurable | Admin UI ή uninstall |
-| Vector Embeddings | `wp_cacb_embeddings` | JSON float array | Μόνιμη | Admin UI ή uninstall |
-| Ρυθμίσεις plugin | `wp_options` | Plaintext | Μόνιμη | Uninstall |
-
----
-
-## Ασφάλεια
-
-| Μηχανισμός | Περιγραφή |
-|---|---|
-| AES-256-GCM encryption | Τα API keys αποθηκεύονται κρυπτογραφημένα με authenticated encryption |
-| WordPress secret keys | Κλειδί κρυπτογράφησης παράγεται από `AUTH_KEY` + `SECURE_AUTH_KEY` |
-| wp-config.php constants | Προαιρετική αποθήκευση keys εκτός βάσης για μέγιστη ασφάλεια |
-| Nonce verification | Κάθε request επαληθεύεται με WP nonce (CSRF protection) |
-| Rate limiting | Max μηνύματα ανά IP ανά ώρα (ρυθμιζόμενο) |
-| Input sanitization | Όλα τα inputs sanitized με WP functions |
-| Output escaping | Όλα τα outputs escaped πριν εμφανιστούν |
-| Capability check | Μόνο `manage_options` έχει πρόσβαση στα settings |
-| SSL verification | Όλα τα cURL requests με `CURLOPT_SSL_VERIFYPEER => true` |
-| Cloudflare-aware | Σωστή ανάγνωση IP πίσω από proxy/CDN |
-| Message length cap | Max 4 000 χαρακτήρες ανά μήνυμα — αποτρέπει API credit drain |
-| Enum whitelisting | Provider, model, bubble_position επαληθεύονται έναντι επιτρεπόμενων τιμών |
-
----
-
-## Αρχιτεκτονική
-
+**Headers:**
 ```
-smart-ai-chatbot/
-├── smart-ai-chatbot.php   ← Bootstrap, activation, constants
-├── uninstall.php          ← Καθαρισμός βάσης κατά τη διαγραφή
-├── includes/
-│   ├── settings.php       ← Admin page, WP options, AES-256-GCM encryption
-│   ├── embeddings.php     ← RAG engine: indexing, embeddings, cosine similarity, retrieval
-│   ├── api.php            ← REST endpoints: chat (function calling) + product card data για OpenAI/Claude
-│   ├── logs.php           ← DB logs, AJAX handlers, log viewer
-│   └── frontend.php       ← Asset enqueue + chat HTML output
-└── assets/
-    ├── chat.js            ← UI logic, product cards, localStorage history
-    ├── admin.js           ← Admin panel JS: provider highlight, key test/delete, RAG index
-    └── chat.css           ← Styles, animations, product card UI
+Content-Type: application/json
 ```
 
-### REST API
-
-Όλες οι επικοινωνίες γίνονται μέσω WP REST API:
-- **`POST /cacb/v1/chat`** — Αποστολή μηνύματος, λήψη απάντησης AI
-- **`GET /cacb/v1/product/{id}`** — Δεδομένα προϊόντος για product cards (όνομα, τιμή, εικόνα, URL)
-
----
-
-## Limits (Settings → AI Chatbot → AI Providers → Limits & Ασφάλεια)
-
-| Ρύθμιση | Εύρος | Default | Περιγραφή |
-|---|---|---|---|
-| Rate limit | 1–200 | 20 | Μέγιστα μηνύματα ανά IP ανά ώρα |
-| Max tokens | 100–2000 | 500 | Μέγιστο μέγεθος απάντησης (έλεγχος κόστους) |
-| History limit | 2–50 | 10 | Πόσα τελευταία μηνύματα να θυμάται |
-| WC search limit | 1–20 | 8 | Max αποτελέσματα ανά αναζήτηση προϊόντων (`cacb_wc_limit`) |
-| Message length | — | 4 000 | Max χαρακτήρες ανά μήνυμα χρήστη (server-side cap) |
-
----
-
-## WooCommerce Integration — Function Calling
-
-Αν το WooCommerce είναι ενεργό, το chatbot αναζητά προϊόντα μέσω **Function Calling** (tool use). Το LLM αποφασίζει πότε και με ποια φίλτρα να τρέξει αναζήτηση — χωρίς να φορτώνεται ο κατάλογος στο prompt.
-
-### Flow (2-turn)
-1. **1ο API call** — αποστέλλεται μαζί με τον ορισμό του tool `search_products`
-2. Το LLM επιλέγει φίλτρα και επιστρέφει `tool_call`
-3. **`wc_get_products()`** εκτελείται server-side (άμεση PHP κλήση, χωρίς HTTP)
-4. **2ο API call** — τα αποτελέσματα δίνονται πίσω στο LLM για τη φυσική απάντηση
-
-### Διαθέσιμα φίλτρα tool
-
-| Parameter | Πηγή | Παράδειγμα |
-|---|---|---|
-| `category` | WC product categories | "λευκα-κρασια" |
-| `year` | WC attribute `pa_xronia` | "2019" |
-| `grape_variety` | WC attribute `pa_poikilia` | "Ασύρτικο" |
-| `region` | WC attribute `pa_perioxi` | "Σαντορίνη" |
-| `origin` | WC attribute `pa_proeleusi` | "Γαλλία" |
-| `sweetness` | WC attribute `pa_glykytita` | "Ξηρό" |
-| `max_price` | WC price filter | `15` |
-| `min_price` | WC price filter | `10` |
-| `keyword` | WP full-text search (`s=`) | "Gerovassiliou" |
-
-Τα enums (χρονιές, ποικιλίες, περιοχές κλπ) διαβάζονται **δυναμικά** από το WC — ενημερώνονται αυτόματα με κάθε νέο προϊόν.
-
----
-
-## RAG — Knowledge Base (Semantic Search)
-
-**Settings → AI Chatbot → Knowledge Base**
-
-Το RAG χρησιμοποιείται **αποκλειστικά για σελίδες/FAQ** (π.χ. πολιτική επιστροφών, αποστολή, επικοινωνία). Τα **WooCommerce προϊόντα εξυπηρετούνται εξ ολοκλήρου μέσω function calling** (βλ. παραπάνω) — δεν αποθηκεύονται πια στον RAG index.
-
-Λειτουργία για σελίδες:
-
-1. **Indexing**: Κάθε σελίδα χωρίζεται σε 200-word chunks με 40-word overlap και μετατρέπεται σε vector embeddings που αποθηκεύονται στη βάση.
-2. **Retrieval**: Για κάθε ερώτηση χρήστη, βρίσκει τα top-K πιο σχετικά chunks (cosine similarity).
-3. **Augmentation**: Εισάγει **μόνο τα σχετικά** αποσπάσματα στο system prompt (ένα chunk ανά σελίδα — το καλύτερο).
-
-### Embedding Provider
-
-| Chat Provider | Embedding API | Key που χρησιμοποιεί |
-|---|---|---|
-| OpenAI | `text-embedding-3-small` (1 536 dims) | Ίδιο OpenAI key |
-| Claude | `text-embedding-3-small` (1 536 dims) | Ξεχωριστό OpenAI key (`cacb_rag_openai_key`) |
-
-> Ο Claude δεν παρέχει Embeddings API. Αν χρησιμοποιείς Claude για chat, χρειάζεσαι ένα επιπλέον OpenAI key αποκλειστικά για embeddings.
-
-### Ρυθμίσεις
-
-| Option | Default | Περιγραφή |
-|---|---|---|
-| `cacb_rag_enabled` | `0` | Ενεργοποίηση RAG |
-| `cacb_rag_top_k` | `5` | Πόσα σχετικά chunks να εισάγει στο prompt |
-| `cacb_rag_index_pages` | `0` | Auto-reindex WordPress pages κατά την αποθήκευση |
-| `cacb_rag_openai_key` | `''` | OpenAI key για embeddings (μόνο για Claude users) |
-
-### Αρχιτεκτονική DB
-
-```
-wp_cacb_embeddings
-├── id           — AUTO INCREMENT
-├── object_type  — 'page' (τα 'product' rows από πριν-v1.4.2 διατηρούνται αλλά αγνοούνται)
-├── object_id    — WordPress post ID
-├── chunk_index  — 0..n ανά σελίδα (v1.2.6+)
-├── chunk_text   — Το κείμενο αυτού του chunk (χρησιμοποιείται απευθείας στο RAG context)
-├── content_hash — MD5 ολόκληρου του κειμένου σελίδας (αποθηκεύεται στο chunk 0)
-├── embedding    — JSON float array (1 536 διαστάσεις)
-├── dims         — Αριθμός διαστάσεων
-└── indexed_at   — Timestamp τελευταίας ευρετηρίασης
+**Body:**
+```json
+{
+  "nonce": "abc123...",
+  "messages": [
+    { "role": "user", "content": "κόκκινα κρασιά κάτω από 15€" }
+  ]
+}
 ```
 
-> **Page chunking (v1.2.6):** Μεγάλες σελίδες (π.χ. 1 500-λέξεων πολιτική επιστροφών) χωρίζονται αυτόματα σε overlapping chunks των 200 λέξεων (με 40 λέξεις overlap). Κάθε chunk παίρνει το δικό του embedding. Το retrieval βρίσκει το πιο σχετικό chunk ακριβώς εκεί που αναφέρεται η απάντηση, αντί να φέρνει ολόκληρη τη σελίδα.
+**Response (200):**
+```json
+{
+  "reply": "Βρήκα δύο προτάσεις: το [PRODUCT:42] και το [PRODUCT:87]..."
+}
+```
+
+**Errors:**
+| Code | Reason |
+|---|---|
+| 403 | Invalid nonce |
+| 429 | Rate limit exceeded |
+| 502 | Upstream AI provider error |
+
+### `GET /cacb/v1/product/{id}`
+
+**Response (200):**
+```json
+{
+  "name": "Κτήμα Γεροβασιλείου",
+  "price": "14.50",
+  "regular_price": "16.00",
+  "sale_price": "14.50",
+  "image": "https://.../image.jpg",
+  "url": "https://.../product/..."
+}
+```
 
 ---
 
 ## Changelog
 
+### v1.4.6 — Product search reliability & new filters
+
+**Tool schema improvements** (`includes/api.php`)
+- Προσθήκη `sort_by_price` param (enum: `asc`/`desc`) για ερωτήσεις τύπου "φθηνότερο/ακριβότερο"
+- Προσθήκη `on_sale` boolean param για προϊόντα σε προσφορά
+- Βελτιωμένη περιγραφή `min_price` με παράδειγμα ("πάνω από 30€")
+- Οδηγία στο tool description για price range (min+max μαζί) και category usage όταν ο χρήστης αναφέρει τύπο προϊόντος
+
+**Reliability fixes — bypass `wc_product_meta_lookup`** (`includes/api.php`)
+- Price filtering: `meta_query` σε `_price` αντί για `wc_get_products()` native `min_price`/`max_price` args
+- Price sorting: `orderby => 'meta_value_num'` + `meta_key => '_price'` αντί για `orderby => 'price'`
+- On-sale filtering: `meta_query` σε `_sale_price > 0` αντί για `on_sale => true`
+
+Αυτές οι αλλαγές διορθώνουν false negatives σε εγκαταστάσεις όπου ο `wc_product_meta_lookup` πίνακας δεν είναι πλήρως συγχρονισμένος.
+
+**UX fix — log timestamps** (`includes/logs.php`)
+- Διόρθωση timezone conversion: `strtotime($created_at . ' UTC')` πριν την κλήση στο `wp_date()`
+- Πριν: λάθος ώρα σε εγκαταστάσεις όπου ο PHP timezone ≠ WordPress timezone
+
+---
+
+### v1.4.5 — Admin logs improvements
+
+Μικροδιορθώσεις στο admin log viewer και styling του chat window.
+
+---
+
 ### v1.4.2 — Professional audit: error handling, dead code cleanup
 
 **Error handling hardening** (`includes/api.php`)
-- HTTP status + array validation στα 2nd calls (OpenAI και Claude) μετά από tool execution — πριν, τυχόν 4xx/5xx στο δεύτερο call επέστρεφε κενό reply αντί για proper error
-- `is_array()` type-check σε όλες τις `json_decode()` καταναλώσεις — αποφυγή PHP notices σε κακοσχηματισμένα payloads
-- Type validation στο Claude `tool_use.input` πριν το χρησιμοποιήσει το `cacb_execute_search_products()`
-- WooCommerce availability guard στο `cacb_get_tool_definitions()` — δεν περνά tool schema στο LLM όταν το WC δεν είναι ενεργό
+- HTTP status + array validation στα 2nd calls (OpenAI & Claude) μετά από tool execution
+- `is_array()` type-check σε όλες τις `json_decode()` καταναλώσεις
+- Type validation στο Claude `tool_use.input` πριν το χρησιμοποιήσει
+- WooCommerce availability guard στο `cacb_get_tool_definitions()`
 
 **Dead code cleanup**
-- Αφαιρέθηκε το orphan option `cacb_wc_categories` — registered αλλά ποτέ δεν διαβαζόταν
-- Αφαιρέθηκε το dead transient `cacb_wc_products_cache` και ο `cacb_maybe_clear_cache()` handler — δεν καλούνταν από κανένα UI
-- Αφαιρέθηκε το product indexing στο RAG engine (`cacb_index_product`, `cacb_auto_reindex_product`, product branch στο batch endpoint) — τα products εξυπηρετούνται μέσω function calling, οπότε κάθε product save προκαλούσε wasted OpenAI embedding call που μετά αγνοούνταν στο retrieval
-- Καθαρίστηκαν `$btnP` references στο `assets/admin.js` (undefined variable από προηγούμενη refactor)
-- Αφαιρέθηκε το `#cacb-rag-index-products` click handler — το κουμπί δεν υπάρχει πλέον
-- Legacy options (`cacb_gemini_*`, `cacb_wc_categories`) παραμένουν στο `uninstall.php` για clean uninstall παλιών εγκαταστάσεων
-
-**Consistency fix** (`includes/settings.php`)
-- `cacb_wc_limit` range διορθώθηκε από [10, 200] σε [1, 20] — ταιριάζει με το clamping στο `api.php`
-- Default μειώθηκε από 50 σε 8 (ταιριάζει με το documented tool behavior)
-- Η περιγραφή του `search_products` tool διαβάζει πλέον δυναμικά το `cacb_wc_limit` αντί για hardcoded "8"
+- Αφαίρεση orphan option `cacb_wc_categories`
+- Αφαίρεση dead transient `cacb_wc_products_cache` και `cacb_maybe_clear_cache()` handler
+- Αφαίρεση product indexing στο RAG engine — τα products εξυπηρετούνται αποκλειστικά μέσω function calling
+- Καθαρισμός undefined `$btnP` references στο `assets/admin.js`
 
 ---
 
 ### v1.4.1 — Attribute-based search + temperature fix
 
-**Attribute filters** (`includes/api.php`)
-- Προσθήκη 5 νέων tool parameters: `year`, `grape_variety`, `region`, `origin`, `sweetness`
-- Χρησιμοποιούν `tax_query` στο `wc_get_products()` αντί για `s=` keyword — ψάχνουν απευθείας στα WC attributes (`pa_xronia`, `pa_poikilia`, `pa_perioxi`, `pa_proeleusi`, `pa_glykytita`)
-- Τα enums διαβάζονται δυναμικά από `get_terms()` — ανανεώνονται αυτόματα
-- Νέα helper `cacb_get_attribute_terms()` για επαναχρησιμοποιήσιμη ανάκτηση attribute terms
-
-**Temperature fix** (`includes/api.php`)
-- Temperature 0.7 → 0.2 για OpenAI και Claude
-- Επίλυση inconsistency: το LLM επέλεγε διαφορετικά tool args για ίδια ερώτηση
+- Προσθήκη 5 tool params: `year`, `grape_variety`, `region`, `origin`, `sweetness` (μέσω `tax_query`)
+- Temperature 0.7 → 0.2 (consistency fix)
+- Dynamic enums από `get_terms()`
 
 ---
 
 ### v1.4.0 — Function calling για WC προϊόντα, αφαίρεση Gemini
 
-**Function Calling** (`includes/api.php`)
 - Αντικατάσταση RAG-για-προϊόντα με 2-turn function calling flow
-- Tool `search_products` με φίλτρα: `keyword`, `category`, `max_price`, `min_price`
-- `cacb_execute_search_products()` — άμεση PHP κλήση `wc_get_products()`, χωρίς HTTP
-- OpenAI format: `{"type": "function", "function": {...}}` · Claude format: `{"name": ..., "input_schema": ...}`
-- RAG περιορίστηκε αποκλειστικά σε pages/FAQ — τα products skip με `continue`
-
-**Αφαίρεση Gemini** (όλα τα αρχεία)
-- Αφαιρέθηκε από `settings.php`, `api.php`, `embeddings.php`, `logs.php`, `uninstall.php`
-- Αφαιρέθηκε `cacb_embed_gemini()`, Gemini CSS badge, Gemini στο provider filter
-
-**SQL fix** (`includes/logs.php`)
-- Αντικατάσταση interpolated `$wpdb->prepare()` pattern με δύο ξεχωριστά branched queries
+- Tool `search_products` με base filters (`keyword`, `category`, `min_price`, `max_price`)
+- Αφαίρεση Gemini από όλα τα αρχεία
+- SQL fix στο `includes/logs.php`
 
 ---
 
 ### v1.3.0 — Product cards, code cleanup
 
-**Product cards** (`includes/api.php`, `assets/chat.js`, `assets/chat.css`)
-- Νέο REST endpoint `GET /cacb/v1/product/{id}` — επιστρέφει όνομα, τιμή, εικόνα, URL
-- Το RAG context περιέχει πλέον `ID:` για κάθε προϊόν — το LLM εισάγει `[PRODUCT:ID]` markers στην απάντηση
-- Το frontend ανιχνεύει τα markers, κάνει async fetch, και εμφανίζει product cards (εικόνα, τιμή, sale price με strikethrough, κουμπί "Προβολή Προϊόντος")
-
-**Αφαίρεση streaming** (`includes/api.php`, `assets/chat.js`)
-- Αφαιρέθηκε ο SSE/streaming handler — όλες οι απαντήσεις γίνονται μέσω REST API (`POST /cacb/v1/chat`)
-- Απλοποίηση κώδικα: ~270 γραμμές streaming code αφαιρέθηκαν
-- Logging γίνεται πλέον αποκλειστικά server-side (αφαιρέθηκε το `cacb_ajax_log_exchange`)
+- Νέο endpoint `GET /cacb/v1/product/{id}` για product card data
+- `[PRODUCT:ID]` markers στο LLM response → async product card rendering στον browser
+- Αφαίρεση SSE streaming (~270 lines)
 
 ---
 
-### v1.2.6 — Page chunking, richer RAG context, Markdown rendering
+### v1.2.6 — Page chunking, Markdown rendering
 
-**Page chunking** (`includes/embeddings.php`)
-- Μεγάλες σελίδες (π.χ. πολιτική απορρήτου 1 500 λέξεων) χωρίζονται πλέον σε overlapping chunks των 200 λέξεων (40 λέξεις overlap) — κάθε chunk αποκτά ξεχωριστό embedding
-- Νέα `cacb_chunk_text()` utility function
-- Το retrieval βρίσκει το ακριβές τμήμα σελίδας που απαντά στο ερώτημα αντί για ολόκληρη τη σελίδα
-- Το `privacy-policy` αφαιρέθηκε από τη λίστα system slugs — πλέον ευρετηριάζεται κανονικά
-- Page batch size μειώθηκε σε 2 (από 5) για αποφυγή PHP timeout λόγω πολλαπλών API calls ανά σελίδα
-
-**DB schema migration** (`smart-ai-chatbot.php`, `includes/embeddings.php`)
-- Νέες στήλες: `chunk_index` (smallint) και `chunk_text` (mediumtext)
-- Νέο UNIQUE KEY: `(object_type, object_id, chunk_index)` αντί για `(object_type, object_id)`
-- Αυτόματο migration για υπάρχουσες εγκαταστάσεις μέσω `cacb_maybe_migrate_chunks_schema()` στο `admin_init`
-- `COUNT(DISTINCT object_id)` στο RAG status widget — εμφανίζει σωστό αριθμό σελίδων (όχι chunks)
-
-**Richer product context** (`includes/embeddings.php`)
-- `cacb_product_to_text()` παίρνει νέο `$desc_limit` parameter: **0 κατά το indexing** (ολόκληρη η περιγραφή → καλύτερο embedding) · **200 λέξεις στο RAG context** (αποφυγή φουσκώματος του prompt)
-- Πριν: 100 λέξεις περιγραφή παντού — τώρα: full text για embedding, 200 λέξεις για context
-- Context-aware RAG query: χρησιμοποιεί τα τελευταία 3 μηνύματα για σωστή ανάκτηση σε follow-up ερωτήσεις
-- Deduplication: αν πολλά chunks ίδιας σελίδας έχουν υψηλό score, εμφανίζεται μόνο το καλύτερο
-
-**Markdown rendering** (`assets/chat.js`, `assets/chat.css`)
-- Οι απαντήσεις του bot αποδίδονται με Markdown: **bold**, *italic*, bullet lists (`-`, `*`, `•`)
-- XSS-safe: escapeHtml εφαρμόζεται πριν οποιοδήποτε HTML markup
+- 200-word overlapping chunks για μεγάλες σελίδες
+- Context-aware RAG query (last 3 messages)
+- Per-page deduplication στο retrieval
+- Markdown rendering (bold, italic, bullet lists) — XSS-safe
 
 ---
 
 ### v1.2.5 — AI Providers tab & security hardening
 
-**Admin panel restructure** (`includes/settings.php`)
-- Νέο tab **"🤖 AI Providers"** — provider selector, API keys, models, και limits & ασφάλεια σε ξεχωριστή καρτέλα
-- Νέο `cacb_providers_group` settings group — αποθήκευση από οποιοδήποτε tab δεν επηρεάζει τα πεδία των άλλων
-- Το tab "Ρυθμίσεις" περιέχει πλέον μόνο: System Prompt, WooCommerce, Logging, Εμφάνιση
-
-**Security fixes**
-- CSRF protection στο "Καθαρισμός cache" link — προστέθηκε `wp_nonce_url()` + `check_admin_referer()`
-- `wp_unslash()` πριν από κάθε `sanitize_*` σε `$_GET` parameters στο log viewer
-- Server-side message length cap (4 000 χαρακτήρες) — αποτρέπει API credit drain από oversized payloads
-- `cacb_sanitize_option` rewrite: exact match με `str_replace()` αντί για εύθραυστο `strpos()`, numeric clamping για όλα τα αριθμητικά πεδία, whitelist validation για enums (`cacb_provider`, `cacb_model`, `cacb_bubble_position` κ.ά.)
-
-**Bug fixes**
-- WooCommerce toggle JS bug — το `querySelector('[name="cacb_wc_enabled"]')` επέστρεφε το hidden input αντί για το checkbox· διορθώθηκε με `id="cacb_wc_enabled"` + `getElementById()`
-- `cacb_wc_enabled` προστέθηκε στα boolean options για consistent `'1'/'0'` storage
+- Νέο "AI Providers" admin tab
+- CSRF protection σε cache clear action
+- Server-side message length cap (4 000 chars)
+- Rewrite `cacb_sanitize_option` με exact match και enum whitelisting
 
 ---
 
-### v1.2.1 — Bug fixes
+### v1.2.0 — Initial RAG
 
-**Settings save bug** (`includes/settings.php`)
-- Τα RAG settings και τα κύρια settings χρησιμοποιούσαν το ίδιο `cacb_settings_group`. Αποθηκεύοντας από το ένα tab αντικαθιστούσε τα settings του άλλου. Διορθώθηκε με ξεχωριστό `cacb_rag_group` για το Knowledge Base tab.
-- Το checkbox `cacb_wc_enabled` δεν είχε hidden field, οπότε δεν μπορούσε να αποενεργοποιηθεί μέσω της φόρμας.
-
-**Elementor page indexing** (`includes/embeddings.php`)
-- Οι σελίδες φτιαγμένες με Elementor αποθηκεύουν το κείμενό τους στο `_elementor_data` meta (JSON), όχι στο `post_content`. Προστέθηκε η `cacb_extract_page_text()` που ανιχνεύει Elementor σελίδες και εξάγει κείμενο από τα widgets (heading, text editor, description, κλπ.).
-
-**Index progress error visibility** (`assets/admin.js`)
-- Το `runBatchIndex()` έδειχνε πάντα ✅ μετά το τέλος, ακόμα και αν όλα τα items απέτυχαν (π.χ. λάθος API key). Τώρα παρακολουθεί `totalIndexed` και `totalErrors` σε όλα τα batches και εμφανίζει το πραγματικό μήνυμα σφάλματος όταν τίποτα δεν έγινε indexed.
-
----
-
-### v1.2.0 — RAG / Knowledge Base
-
-- Πλήρης υλοποίηση RAG (Retrieval-Augmented Generation) με vector embeddings
-- Υποστήριξη OpenAI `text-embedding-3-small` (1 536 dims) και Gemini `text-embedding-004` (768 dims)
-- Νέος πίνακας `wp_cacb_embeddings` στη βάση δεδομένων
-- Admin tab "Knowledge Base": status, batch indexing, progress bar, clear index
-- Cosine similarity σε pure PHP — fallback στην παλιά μέθοδο αν RAG ανενεργό ή index κενός
-- Content hash deduplication — αποφυγή περιττών embedding API calls
-- WP-Cron async auto-reindex κατά αποθήκευση προϊόντος/σελίδας
-- White-label rebrand: `Capitano AI Chatbot` → `Smart AI Chatbot`
+- Vector embeddings με OpenAI `text-embedding-3-small`
+- Νέος `wp_cacb_embeddings` πίνακας
+- Batch indexing UI με progress bar
+- Content hash deduplication
 
 ---
 
 ### v1.1.0 — Initial release
 
-- OpenAI GPT, Anthropic Claude, Google Gemini support
-- AES-256-GCM κρυπτογράφηση API keys
+- OpenAI GPT, Anthropic Claude support
+- AES-256-GCM encryption
 - Rate limiting, history limit, logging
-- WooCommerce product context integration
 - Privacy notice, bubble position, color customization
+
+---
+
+## Roadmap
+
+Ιδέες για μελλοντικές εκδόσεις (δεν έχουν υλοποιηθεί):
+
+**UX**
+- Streaming responses (SSE) για word-by-word rendering
+- Proactive chat triggers (π.χ. user views product 30s)
+- Full Markdown (code blocks, tables, links)
+
+**Tools**
+- `get_order_status` — "Πού είναι η παραγγελία μου;"
+- `check_availability` — real-time stock
+- `get_related_products` — cross-sell
+
+**Architecture**
+- Provider abstraction interface (cleaner plug-in για νέους providers)
+- Vector DB abstraction (Pinecone/Qdrant) για 10K+ indexed content
+- Semantic caching (cache παρόμοιων ερωτήσεων)
+- Fallback chain (OpenAI → Claude → cached)
+- Hybrid search (BM25 + vector combined)
+
+**Integrations**
+- WhatsApp / Viber / Messenger
+- Email auto-reply
+- Analytics dashboard (most-asked, conversion rate)
 
 ---
 
 ## Uninstall
 
-Διαγραφή από **WP Admin → Plugins → Delete**:
-- Αφαιρεί όλα τα options (συμπεριλαμβανομένων των κρυπτογραφημένων API keys) από `wp_options`
-- Αφαιρεί όλα τα rate limit transients
-- Αφαιρεί τα legacy options από παλαιότερες εκδόσεις (`cacb_gemini_*`, `cacb_wc_categories`)
-- Drop των tables `wp_cacb_logs` και `wp_cacb_embeddings`
-- Δεν αφήνει τίποτα πίσω στη βάση
+**WP Admin → Plugins → Delete** διαγράφει πλήρως:
+
+- Όλα τα options (συμπεριλαμβανομένων κρυπτογραφημένων API keys) από `wp_options`
+- Όλα τα rate limit transients
+- Legacy options από παλαιότερες εκδόσεις (`cacb_gemini_*`, `cacb_wc_categories`)
+- Tables `wp_cacb_logs` και `wp_cacb_embeddings`
+
+Το plugin **δεν αφήνει τίποτα πίσω** στη βάση.
+
+---
+
+## License
+
+GPL v2 or later — συμβατό με τη WordPress GPL.

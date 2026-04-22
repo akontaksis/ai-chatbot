@@ -210,17 +210,10 @@ function cacb_cosine_similarity( array $a, array $b ): float {
 function cacb_product_to_text( $product, int $desc_limit = 200 ): string {
     $parts = [ $product->get_name() ];
 
-    // Categories
-    $cat_ids = $product->get_category_ids();
-    $cats    = [];
-    foreach ( $cat_ids as $cat_id ) {
-        $term = get_term( $cat_id, 'product_cat' );
-        if ( $term && ! is_wp_error( $term ) ) {
-            $cats[] = $term->name;
-        }
-    }
-    if ( $cats ) {
-        $parts[] = 'Κατηγορία: ' . implode( ', ', $cats );
+    // Categories — single query via wp_get_post_terms (avoids N+1 on get_term per ID)
+    $cat_terms = wp_get_post_terms( $product->get_id(), 'product_cat', [ 'fields' => 'names' ] );
+    if ( ! is_wp_error( $cat_terms ) && ! empty( $cat_terms ) ) {
+        $parts[] = 'Κατηγορία: ' . implode( ', ', $cat_terms );
     }
 
     // Price & stock
