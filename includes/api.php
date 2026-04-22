@@ -310,7 +310,7 @@ function cacb_get_tool_definitions(): array {
 
     return [
         'name'        => 'search_products',
-        'description' => "Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση. Επιστρέφει έως {$max_results} αποτελέσματα.",
+        'description' => "Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Κάλεσε αυτό το tool όταν ο χρήστης ρωτάει για προϊόντα, τιμές, διαθεσιμότητα ή θέλει σύσταση. Επιστρέφει έως {$max_results} αποτελέσματα. Για εύρος τιμών χρησιμοποίησε min_price και max_price μαζί (π.χ. 20-40€: min_price=20, max_price=40).",
         'parameters'  => [
             'type'       => 'object',
             'properties' => $properties,
