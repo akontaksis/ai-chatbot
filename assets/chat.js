@@ -217,7 +217,7 @@
     // ── Add to cart via WooCommerce AJAX ──────────────────────────────────────
     msgList.addEventListener( 'click', function ( e ) {
         const btn = e.target.closest( '.cacb-card-cart-btn' );
-        if ( ! btn || ! cfg.wcAjaxUrl ) return;
+        if ( ! btn || ! cfg.wcEnabled ) return;
 
         const productId = btn.dataset.productId;
         if ( ! productId ) return;
