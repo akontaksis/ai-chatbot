@@ -57,21 +57,33 @@ function cacb_maybe_migrate_chunks_schema(): void {
         return;
     }
 
-    // Already migrated if chunk_index column is present
-    // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-    $col = $wpdb->get_var( "SHOW COLUMNS FROM {$table} LIKE 'chunk_index'" );
-    if ( $col ) {
-        return;
+    // phpcs:disable WordPress.DB.DirectDatabaseQuery
+
+    // Ensure chunk_index column exists
+    $has_chunk_idx = $wpdb->get_var( "SHOW COLUMNS FROM {$table} LIKE 'chunk_index'" );
+    if ( ! $has_chunk_idx ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN chunk_index smallint(5) UNSIGNED NOT NULL DEFAULT 0 AFTER object_id" );
     }
 
-    // Add new columns
-    // phpcs:disable WordPress.DB.DirectDatabaseQuery
-    $wpdb->query( "ALTER TABLE {$table} ADD COLUMN chunk_index smallint(5) UNSIGNED NOT NULL DEFAULT 0 AFTER object_id" );
-    $wpdb->query( "ALTER TABLE {$table} ADD COLUMN chunk_text mediumtext AFTER chunk_index" );
+    // Ensure chunk_text column exists
+    $has_chunk_text = $wpdb->get_var( "SHOW COLUMNS FROM {$table} LIKE 'chunk_text'" );
+    if ( ! $has_chunk_text ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN chunk_text mediumtext AFTER chunk_index" );
+    }
 
-    // Replace old unique key (object_type, object_id) with (object_type, object_id, chunk_index)
-    $wpdb->query( "ALTER TABLE {$table} DROP INDEX idx_object" );
-    $wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY idx_object (object_type, object_id, chunk_index)" );
+    // Ensure the UNIQUE KEY includes chunk_index. Check the actual column list
+    // of idx_object — if it doesn't contain chunk_index, rebuild the index.
+    $idx_cols = $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'idx_object'" );
+    $cols     = array_map( static fn( $r ) => $r->Column_name, $idx_cols ?: [] );
+    if ( ! in_array( 'chunk_index', $cols, true ) ) {
+        // Clean up any stale rows first (data from pre-migration single-chunk era)
+        // so DROP INDEX + ADD UNIQUE doesn't fail on duplicates.
+        $wpdb->query( "DELETE FROM {$table}" );
+        $wpdb->query( "ALTER TABLE {$table} DROP INDEX idx_object" );
+        $wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY idx_object (object_type, object_id, chunk_index)" );
+        error_log( '[CACB-RAG] Migrated idx_object to include chunk_index (data cleared for reindex)' );
+    }
+
     // phpcs:enable
 }
 
@@ -454,7 +466,6 @@ function cacb_index_page( int $post_id ) {
 
     // Split full content into 200-word overlapping chunks
     $chunks = cacb_chunk_text( $content, 200, 40 );
-    error_log( '[CACB-RAG] page ' . $post_id . ' "' . $title . '": ' . mb_strlen( $content ) . ' chars → ' . count( $chunks ) . ' chunks. First chunk: ' . mb_substr( $chunks[0] ?? '', 0, 80 ) . '...' );
 
     foreach ( $chunks as $idx => $chunk_text ) {
         // Prepend the page title to every chunk so each embedding carries context
@@ -472,7 +483,7 @@ function cacb_index_page( int $post_id ) {
 
         // REPLACE (not INSERT) gracefully handles cases where a previous
         // partial-index run left stale rows with the same (type, id, chunk_index).
-        $result = $wpdb->replace(
+        $wpdb->replace(
             $wpdb->prefix . 'cacb_embeddings',
             [
                 'object_type'  => 'page',
@@ -486,9 +497,6 @@ function cacb_index_page( int $post_id ) {
             ],
             [ '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s' ]
         );
-        if ( false === $result ) {
-            error_log( '[CACB-RAG] insert chunk ' . $idx . ' for page ' . $post_id . ' FAILED: ' . $wpdb->last_error );
-        }
     }
 
     return true;
@@ -742,15 +750,10 @@ function cacb_rag_add_indexed_list( array $data ): array {
     );
     // phpcs:enable
 
-    error_log( '[CACB-RAG] admin list query returned ' . count( $chunks ) . ' total chunk rows' );
-
     // Group chunks by object_id
     $grouped = [];
     foreach ( $chunks as $c ) {
         $grouped[ (int) $c->object_id ][] = $c;
-    }
-    foreach ( $grouped as $gid => $gchunks ) {
-        error_log( '[CACB-RAG] admin list: page ' . $gid . ' has ' . count( $gchunks ) . ' chunks in DB' );
     }
 
     $total_chunks = 0;
