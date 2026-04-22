@@ -673,89 +673,45 @@ function cacb_ajax_rag_status(): void {
 
     $total_pages = (int) wp_count_posts( 'page' )->publish;
 
-    wp_send_json_success( [
+    $data = [
         'indexed_pages' => $indexed_pages,
         'total_pages'   => $total_pages,
         'last_indexed'  => $last_indexed
             ? human_time_diff( strtotime( $last_indexed ), time() )
             : null,
         'provider'      => cacb_get_embedding_provider(),
-    ] );
+    ];
+    wp_send_json_success( apply_filters( 'cacb_rag_status_data', $data ) );
 }
 
-// ── List indexed items with URLs ──────────────────────────────────────────────
-add_action( 'wp_ajax_cacb_rag_list_indexed', 'cacb_ajax_rag_list_indexed' );
-function cacb_ajax_rag_list_indexed(): void {
-    check_ajax_referer( 'cacb_admin_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_die();
-
+// ── Add list of indexed pages to the status endpoint response ────────────────
+add_filter( 'cacb_rag_status_data', 'cacb_rag_add_indexed_list' );
+function cacb_rag_add_indexed_list( array $data ): array {
     global $wpdb;
     $table = $wpdb->prefix . 'cacb_embeddings';
 
     // phpcs:disable WordPress.DB.DirectDatabaseQuery
     $rows = $wpdb->get_results(
-        "SELECT object_id, COUNT(*) AS chunks, MAX(indexed_at) AS indexed_at
+        "SELECT object_id, COUNT(*) AS chunks
          FROM {$table}
          WHERE object_type = 'page'
          GROUP BY object_id
-         ORDER BY indexed_at DESC"
+         ORDER BY MAX(indexed_at) DESC"
     );
     // phpcs:enable
 
     $items = [];
     foreach ( $rows as $row ) {
-        $id   = (int) $row->object_id;
-        $post = get_post( $id );
-        if ( ! $post ) {
-            continue;
-        }
+        $post = get_post( (int) $row->object_id );
+        if ( ! $post ) continue;
         $items[] = [
-            'id'         => $id,
-            'title'      => $post->post_title ?: '(untitled)',
-            'url'        => get_permalink( $id ),
-            'chunks'     => (int) $row->chunks,
-            'indexed_at' => $row->indexed_at,
-            'ago'        => human_time_diff( strtotime( $row->indexed_at ), time() ),
-            'status'     => $post->post_status,
+            'title'  => $post->post_title ?: '(untitled)',
+            'url'    => get_permalink( $post->ID ),
+            'chunks' => (int) $row->chunks,
         ];
     }
-
-    wp_send_json_success( [ 'items' => $items ] );
-}
-
-// ── Re-index a single page ────────────────────────────────────────────────────
-add_action( 'wp_ajax_cacb_rag_reindex_one', 'cacb_ajax_rag_reindex_one' );
-function cacb_ajax_rag_reindex_one(): void {
-    check_ajax_referer( 'cacb_admin_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_die();
-
-    $id = (int) ( $_POST['id'] ?? 0 );
-    if ( ! $id ) {
-        wp_send_json_error( [ 'message' => 'Invalid ID' ] );
-    }
-
-    // Force reindex by clearing the stored hash first
-    cacb_delete_embedding( 'page', $id );
-    $result = cacb_index_page( $id );
-
-    if ( is_wp_error( $result ) ) {
-        wp_send_json_error( [ 'message' => $result->get_error_message() ] );
-    }
-    wp_send_json_success();
-}
-
-// ── Remove a single page from index ───────────────────────────────────────────
-add_action( 'wp_ajax_cacb_rag_remove_one', 'cacb_ajax_rag_remove_one' );
-function cacb_ajax_rag_remove_one(): void {
-    check_ajax_referer( 'cacb_admin_nonce', 'nonce' );
-    if ( ! current_user_can( 'manage_options' ) ) wp_die();
-
-    $id = (int) ( $_POST['id'] ?? 0 );
-    if ( ! $id ) {
-        wp_send_json_error( [ 'message' => 'Invalid ID' ] );
-    }
-    cacb_delete_embedding( 'page', $id );
-    wp_send_json_success();
+    $data['items'] = $items;
+    return $data;
 }
 
 // ── Batch index (pages only — products are retrieved via function calling) ───

@@ -729,24 +729,20 @@ function cacb_render_rag_page(): void {
 
         <!-- ── Index Status ── -->
         <div class="cacb-card cacb-card--full" id="cacb-rag-status-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-                <h2 style="margin:0">📊 <?php esc_html_e( 'Κατάσταση Index', 'smart-ai-chatbot' ); ?></h2>
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button type="button" id="cacb-rag-index-pages" class="button button-primary">
-                        <span class="dashicons dashicons-update" style="line-height:30px;font-size:16px;margin-right:4px"></span>
-                        <?php esc_html_e( 'Index / Ενημέρωση', 'smart-ai-chatbot' ); ?>
-                    </button>
-                    <button type="button" id="cacb-rag-clear" class="button cacb-btn-danger">
-                        <span class="dashicons dashicons-trash" style="line-height:30px;font-size:16px;margin-right:4px"></span>
-                        <?php esc_html_e( 'Καθαρισμός', 'smart-ai-chatbot' ); ?>
-                    </button>
-                </div>
-            </div>
+            <h2 style="margin-top:0">📊 <?php esc_html_e( 'Κατάσταση Index', 'smart-ai-chatbot' ); ?></h2>
 
-            <!-- Stat cards -->
-            <div id="cacb-rag-stats" class="cacb-rag-stats">
+            <div id="cacb-rag-status-wrap">
                 <span class="spinner is-active" style="float:none;margin:0 8px 0 0"></span>
                 <?php esc_html_e( 'Φόρτωση…', 'smart-ai-chatbot' ); ?>
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+                <button type="button" id="cacb-rag-index-pages" class="button button-primary">
+                    📄 <?php esc_html_e( 'Index Σελίδων / FAQ', 'smart-ai-chatbot' ); ?>
+                </button>
+                <button type="button" id="cacb-rag-clear" class="button cacb-btn-danger">
+                    🗑 <?php esc_html_e( 'Καθαρισμός Index', 'smart-ai-chatbot' ); ?>
+                </button>
             </div>
 
             <!-- Progress bar -->
@@ -758,73 +754,10 @@ function cacb_render_rag_page(): void {
                 <p id="cacb-rag-progress-text" style="font-size:13px;margin-top:6px"></p>
             </div>
 
-            <!-- Indexed items table -->
-            <div id="cacb-rag-indexed-wrap" style="margin-top:20px">
-                <h3 style="margin-bottom:8px;font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#555">
-                    <?php esc_html_e( 'Ευρετηριασμένες σελίδες', 'smart-ai-chatbot' ); ?>
-                </h3>
-                <div id="cacb-rag-indexed-list">
-                    <p style="color:#888;font-style:italic"><?php esc_html_e( 'Φόρτωση…', 'smart-ai-chatbot' ); ?></p>
-                </div>
-            </div>
+            <!-- Indexed pages list -->
+            <div id="cacb-rag-indexed-wrap" style="margin-top:20px"></div>
         </div>
 
     </div><!-- .cacb-grid -->
-
-    <style>
-        .cacb-rag-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 12px;
-            margin-bottom: 8px;
-        }
-        .cacb-stat-card {
-            background: #f6f7f7;
-            border: 1px solid #dcdcde;
-            border-radius: 6px;
-            padding: 14px 16px;
-        }
-        .cacb-stat-card .cacb-stat-label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            color: #646970;
-            margin-bottom: 6px;
-        }
-        .cacb-stat-card .cacb-stat-value {
-            font-size: 22px;
-            font-weight: 600;
-            color: #1d2327;
-            line-height: 1.2;
-        }
-        .cacb-stat-card .cacb-stat-sub {
-            font-size: 12px;
-            color: #8c8f94;
-            margin-top: 2px;
-        }
-        .cacb-stat-card.cacb-stat--ok   { border-left: 3px solid #00a32a; }
-        .cacb-stat-card.cacb-stat--warn { border-left: 3px solid #dba617; }
-        .cacb-stat-card.cacb-stat--err  { border-left: 3px solid #d63638; }
-
-        .cacb-indexed-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .cacb-indexed-table th {
-            text-align: left; padding: 8px 10px; background: #f6f7f7;
-            border-bottom: 1px solid #dcdcde; font-weight: 600; color: #1d2327;
-        }
-        .cacb-indexed-table td {
-            padding: 10px; border-bottom: 1px solid #f0f0f1; vertical-align: middle;
-        }
-        .cacb-indexed-table tr:hover td { background: #fafafa; }
-        .cacb-indexed-table .cacb-url-link {
-            color: #2271b1; text-decoration: none; word-break: break-all;
-        }
-        .cacb-indexed-table .cacb-url-link:hover { text-decoration: underline; }
-        .cacb-chip {
-            display: inline-block; padding: 2px 8px; border-radius: 10px;
-            background: #e7f3ff; color: #0a4b78; font-size: 11px; font-weight: 600;
-        }
-        .cacb-row-actions { display: flex; gap: 6px; }
-        .cacb-row-actions .button { padding: 0 8px; min-height: 26px; line-height: 24px; font-size: 12px; }
-    </style>
     <?php
 }
