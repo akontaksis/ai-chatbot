@@ -36,6 +36,7 @@ function cacb_maybe_upgrade_db(): void {
 
 // ── Write a log entry ─────────────────────────────────────────────────────────
 function cacb_log_exchange( string $provider, string $model, string $user_msg, string $bot_reply, string $rag_context = '' ): void {
+    error_log( '[CACB] cacb_log_exchange called: enabled=' . get_option( 'cacb_logging_enabled', '1' ) );
     if ( get_option( 'cacb_logging_enabled', '1' ) !== '1' ) return;
 
     global $wpdb;
