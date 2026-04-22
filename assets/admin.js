@@ -63,44 +63,126 @@
         } );
     } );
 
-    // ── RAG: index status ─────────────────────────────────────────────────────
-    var $ragStatus = $( '#cacb-rag-status-wrap' );
-    if ( $ragStatus.length ) {
+    // ── RAG: index status + indexed list ──────────────────────────────────────
+    var $ragStats = $( '#cacb-rag-stats' );
+    if ( $ragStats.length ) {
         loadRagStatus();
+        loadIndexedList();
     }
 
     function loadRagStatus() {
         $.post( cacbAdmin.ajaxUrl, { action: 'cacb_rag_status', nonce: nonce }, function ( res ) {
             if ( ! res.success ) return;
-            var d    = res.data;
-            var html = '';
+            var d = res.data;
 
             if ( d.provider === 'none' ) {
-                html = '<div class="cacb-notice cacb-notice--warn">⚠️ Δεν υπάρχει embedding API key. '
-                    + 'Βεβαιώσου ότι το API key του ενεργού provider είναι αποθηκευμένο (ή πρόσθεσε OpenAI key αν χρησιμοποιείς Claude).</div>';
-            } else {
-                html += '<table style="border-collapse:collapse;font-size:13px">'
-                    + '<tr><td style="padding:4px 16px 4px 0"><strong>Provider Embeddings</strong></td>'
-                    + '<td>' + esc( d.provider ) + '</td></tr>';
-
-                if ( d.total_pages > 0 ) {
-                    html += '<tr><td style="padding:4px 16px 4px 0"><strong>Σελίδες indexed</strong></td>'
-                        + '<td>' + d.indexed_pages + ' / ' + d.total_pages + '</td></tr>';
-                }
-                if ( d.last_indexed ) {
-                    html += '<tr><td style="padding:4px 16px 4px 0"><strong>Τελευταία ευρετηρίαση</strong></td>'
-                        + '<td>πριν ' + esc( d.last_indexed ) + '</td></tr>';
-                } else {
-                    html += '<tr><td colspan="2" style="padding:4px 0">'
-                        + '<span style="color:#d63638">⚠ Κανένα περιεχόμενο στον index ακόμα. Πάτα "Index Σελίδων" παρακάτω.</span>'
-                        + '</td></tr>';
-                }
-                html += '</table>';
+                $ragStats.html(
+                    '<div class="cacb-notice cacb-notice--warn" style="grid-column:1/-1">⚠️ Δεν υπάρχει embedding API key. '
+                    + 'Βεβαιώσου ότι το API key του ενεργού provider είναι αποθηκευμένο (ή πρόσθεσε OpenAI key αν χρησιμοποιείς Claude).</div>'
+                );
+                return;
             }
 
-            $ragStatus.html( html );
+            var coverage = d.total_pages > 0
+                ? Math.round( ( d.indexed_pages / d.total_pages ) * 100 )
+                : 0;
+            var coverageClass = coverage === 100 ? 'cacb-stat--ok'
+                              : coverage >= 50   ? 'cacb-stat--warn'
+                              :                    'cacb-stat--err';
+
+            var html = ''
+                + statCard( 'Provider', esc( d.provider ).toUpperCase(), null, '' )
+                + statCard( 'Σελίδες στον Index', d.indexed_pages + ' / ' + d.total_pages,
+                           coverage + '% κάλυψη', coverageClass )
+                + statCard( 'Τελευταία ενημέρωση',
+                           d.last_indexed ? 'πριν ' + esc( d.last_indexed ) : '—',
+                           d.last_indexed ? '' : 'Κανένα index ακόμα',
+                           d.last_indexed ? 'cacb-stat--ok' : 'cacb-stat--warn' );
+
+            $ragStats.html( html );
         } );
     }
+
+    function statCard( label, value, sub, cls ) {
+        return '<div class="cacb-stat-card ' + ( cls || '' ) + '">'
+            + '<div class="cacb-stat-label">' + esc( label ) + '</div>'
+            + '<div class="cacb-stat-value">' + value + '</div>'
+            + ( sub ? '<div class="cacb-stat-sub">' + esc( sub ) + '</div>' : '' )
+            + '</div>';
+    }
+
+    function loadIndexedList() {
+        var $list = $( '#cacb-rag-indexed-list' );
+        $.post( cacbAdmin.ajaxUrl, { action: 'cacb_rag_list_indexed', nonce: nonce }, function ( res ) {
+            if ( ! res.success ) {
+                $list.html( '<p style="color:#d63638">Σφάλμα φόρτωσης λίστας.</p>' );
+                return;
+            }
+            var items = res.data.items || [];
+            if ( ! items.length ) {
+                $list.html( '<p style="color:#888;font-style:italic">Καμία σελίδα δεν έχει ευρετηριαστεί ακόμα.</p>' );
+                return;
+            }
+
+            var rows = items.map( function ( it ) {
+                return '<tr data-id="' + it.id + '">'
+                    + '<td><strong>' + esc( it.title ) + '</strong><br>'
+                    + '<a href="' + esc( it.url ) + '" target="_blank" rel="noopener" class="cacb-url-link">'
+                    + esc( it.url ) + '</a></td>'
+                    + '<td><span class="cacb-chip">' + it.chunks + ' chunks</span></td>'
+                    + '<td style="color:#646970">πριν ' + esc( it.ago ) + '</td>'
+                    + '<td><div class="cacb-row-actions">'
+                    + '<button type="button" class="button cacb-reindex-one" title="Re-index">↻</button>'
+                    + '<button type="button" class="button cacb-btn-danger cacb-remove-one" title="Αφαίρεση">✕</button>'
+                    + '</div></td>'
+                    + '</tr>';
+            } ).join( '' );
+
+            $list.html(
+                '<table class="cacb-indexed-table">'
+                + '<thead><tr>'
+                + '<th>Σελίδα / URL</th>'
+                + '<th style="width:100px">Chunks</th>'
+                + '<th style="width:140px">Ενημέρωση</th>'
+                + '<th style="width:90px">Ενέργειες</th>'
+                + '</tr></thead>'
+                + '<tbody>' + rows + '</tbody>'
+                + '</table>'
+            );
+        } );
+    }
+
+    // Per-row actions (delegated)
+    $( document ).on( 'click', '.cacb-reindex-one', function () {
+        var $row = $( this ).closest( 'tr' );
+        var id   = $row.data( 'id' );
+        var $btn = $( this );
+        $btn.prop( 'disabled', true ).text( '…' );
+        $.post( cacbAdmin.ajaxUrl, { action: 'cacb_rag_reindex_one', nonce: nonce, id: id }, function ( res ) {
+            $btn.prop( 'disabled', false ).text( '↻' );
+            if ( res.success ) {
+                loadRagStatus();
+                loadIndexedList();
+            } else {
+                alert( 'Σφάλμα: ' + ( res.data && res.data.message || 'unknown' ) );
+            }
+        } );
+    } );
+
+    $( document ).on( 'click', '.cacb-remove-one', function () {
+        if ( ! window.confirm( 'Αφαίρεση από τον index;' ) ) return;
+        var $row = $( this ).closest( 'tr' );
+        var id   = $row.data( 'id' );
+        $.post( cacbAdmin.ajaxUrl, { action: 'cacb_rag_remove_one', nonce: nonce, id: id }, function ( res ) {
+            if ( res.success ) {
+                $row.fadeOut( 200, function () {
+                    $row.remove();
+                    loadRagStatus();
+                    loadIndexedList();
+                } );
+            }
+        } );
+    } );
 
     function esc( str ) {
         return $( '<div>' ).text( String( str ) ).html();
@@ -171,6 +253,7 @@
                 $btnPg.prop( 'disabled', false );
                 $btnClear.prop( 'disabled', false );
                 loadRagStatus();
+                loadIndexedList();
             } else {
                 runBatchIndex( type, d.offset, totalIndexed, totalErrors, firstError );
             }
@@ -197,6 +280,7 @@
             if ( res.success ) {
                 $( '#cacb-rag-progress-wrap' ).hide();
                 loadRagStatus();
+                loadIndexedList();
                 alert( i18n.cleared );
             }
         } ).fail( function () {
