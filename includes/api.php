@@ -392,7 +392,9 @@ function cacb_execute_search_products( array $args ): string {
         $lines[] = '• ' . cacb_product_to_text( $product, 150 ) . ' | ID:' . $product->get_id();
     }
 
-    return implode( "\n", $lines );
+    $result = implode( "\n", $lines );
+    error_log( '[CACB] tool result: ' . $result );
+    return $result;
 }
 
 // ── Main chat handler ─────────────────────────────────────────────────────────
