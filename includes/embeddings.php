@@ -690,27 +690,52 @@ function cacb_rag_add_indexed_list( array $data ): array {
     global $wpdb;
     $table = $wpdb->prefix . 'cacb_embeddings';
 
+    // Aggregate: total chunks + last indexed per page + the stored hash from chunk 0
     // phpcs:disable WordPress.DB.DirectDatabaseQuery
     $rows = $wpdb->get_results(
-        "SELECT object_id, COUNT(*) AS chunks
-         FROM {$table}
-         WHERE object_type = 'page'
-         GROUP BY object_id
-         ORDER BY MAX(indexed_at) DESC"
+        "SELECT
+            e.object_id,
+            COUNT(*) AS chunks,
+            MAX(e.indexed_at) AS indexed_at,
+            MAX(CASE WHEN e.chunk_index = 0 THEN e.content_hash END) AS stored_hash,
+            MAX(CASE WHEN e.chunk_index = 0 THEN e.chunk_text END) AS preview
+         FROM {$table} e
+         WHERE e.object_type = 'page'
+         GROUP BY e.object_id
+         ORDER BY indexed_at DESC"
     );
     // phpcs:enable
 
-    $items = [];
+    $total_chunks = 0;
+    $items        = [];
     foreach ( $rows as $row ) {
-        $post = get_post( (int) $row->object_id );
+        $id   = (int) $row->object_id;
+        $post = get_post( $id );
         if ( ! $post ) continue;
-        $items[] = [
-            'title'  => $post->post_title ?: '(untitled)',
-            'url'    => get_permalink( $post->ID ),
-            'chunks' => (int) $row->chunks,
+
+        // Compute current hash to detect staleness (content has changed since indexing)
+        $current_text = cacb_extract_page_text( $id, $post );
+        $current_hash = md5( $post->post_title . $current_text );
+        $stale        = $row->stored_hash && $current_hash !== $row->stored_hash;
+
+        // Clean preview: strip the leading "Title\n\n" that we prepend during indexing
+        $preview = (string) $row->preview;
+        $preview = preg_replace( '/^' . preg_quote( $post->post_title, '/' ) . "\s*\n+/u", '', $preview );
+        $preview = wp_trim_words( $preview, 30, '…' );
+
+        $total_chunks += (int) $row->chunks;
+        $items[]       = [
+            'title'   => $post->post_title ?: '(untitled)',
+            'url'     => get_permalink( $id ),
+            'chunks'  => (int) $row->chunks,
+            'ago'     => human_time_diff( strtotime( $row->indexed_at ), time() ),
+            'stale'   => $stale,
+            'preview' => $preview,
         ];
     }
-    $data['items'] = $items;
+
+    $data['items']        = $items;
+    $data['total_chunks'] = $total_chunks;
     return $data;
 }
 
