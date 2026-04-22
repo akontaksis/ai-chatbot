@@ -201,7 +201,7 @@
 
         const url = /^https?:\/\//.test( p.url ) ? p.url : '#';
 
-        const cartBtn = ( cfg.wcAjaxUrl && id )
+        const cartBtn = ( cfg.wcEnabled && id )
             ? '<button class="cacb-card-cart-btn" data-product-id="' + parseInt( id, 10 ) + '">Προσθήκη στο καλάθι</button>'
             : '';
 
@@ -225,26 +225,20 @@
         btn.disabled    = true;
         btn.textContent = 'Γίνεται προσθήκη…';
 
-        fetch( cfg.wcAjaxUrl, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body:    new URLSearchParams( { product_id: productId, quantity: 1 } ),
+        fetch( cfg.ajaxUrl + '?action=cacb_add_to_cart', {
+            method:      'POST',
+            credentials: 'same-origin',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        new URLSearchParams( { product_id: productId, quantity: 1, nonce: cfg.nonce } ),
         } )
             .then( function ( res ) { return res.json(); } )
             .then( function ( data ) {
-                if ( data.error ) {
-                    btn.textContent = 'Σφάλμα';
-                    btn.disabled    = false;
-                } else {
+                if ( data.success ) {
                     btn.textContent = 'Προστέθηκε!';
                     btn.classList.add( 'cacb-card-cart-btn--done' );
-                    // Refresh WooCommerce mini-cart fragments
-                    if ( data.fragments ) {
-                        Object.keys( data.fragments ).forEach( function ( sel ) {
-                            const el = document.querySelector( sel );
-                            if ( el ) el.outerHTML = data.fragments[ sel ];
-                        } );
-                    }
+                } else {
+                    btn.textContent = 'Σφάλμα';
+                    btn.disabled    = false;
                 }
             } )
             .catch( function () {

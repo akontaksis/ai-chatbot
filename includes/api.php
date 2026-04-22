@@ -8,6 +8,29 @@ function cacb_ajax_refresh_nonce(): void {
     wp_send_json_success( [ 'nonce' => wp_create_nonce( 'cacb_chat_nonce' ) ] );
 }
 
+// ── Add to cart endpoint ──────────────────────────────────────────────────────
+add_action( 'wp_ajax_cacb_add_to_cart',        'cacb_ajax_add_to_cart' );
+add_action( 'wp_ajax_nopriv_cacb_add_to_cart', 'cacb_ajax_add_to_cart' );
+function cacb_ajax_add_to_cart(): void {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'cacb_chat_nonce' ) ) {
+        wp_send_json_error( 'invalid_nonce', 403 );
+    }
+    if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
+        wp_send_json_error( 'no_woocommerce', 400 );
+    }
+    $product_id = absint( $_POST['product_id'] ?? 0 );
+    $quantity   = max( 1, absint( $_POST['quantity'] ?? 1 ) );
+    if ( ! $product_id ) {
+        wp_send_json_error( 'missing_product_id', 400 );
+    }
+    $result = WC()->cart->add_to_cart( $product_id, $quantity );
+    if ( $result ) {
+        wp_send_json_success( [ 'cart_count' => WC()->cart->get_cart_contents_count() ] );
+    } else {
+        wp_send_json_error( 'add_failed', 400 );
+    }
+}
+
 // ── Register REST routes ──────────────────────────────────────────────────────
 add_action( 'rest_api_init', 'cacb_register_routes' );
 function cacb_register_routes() {
