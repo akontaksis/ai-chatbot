@@ -315,6 +315,24 @@ function cacb_chunk_text( string $text, int $chunk_words = 200, int $overlap_wor
  * @param  WP_Post $post
  * @return string
  */
+/**
+ * Clean HTML/shortcodes while preserving word boundaries.
+ * Replaces tags with spaces so </p><p> doesn't glue adjacent words together.
+ */
+function cacb_clean_text( string $html ): string {
+    // Strip Elementor dynamic tags (e.g. [elementor-tag id="..." name="..." settings="..."])
+    $out = preg_replace( '/\[elementor-tag[^\]]*\]/i', ' ', $html );
+    // Strip any other registered shortcodes
+    $out = strip_shortcodes( $out );
+    // Replace HTML tags with spaces (so tag boundaries become word boundaries)
+    $out = preg_replace( '/<[^>]+>/', ' ', $out );
+    // Decode HTML entities (&nbsp; → space, &amp; → &, etc.)
+    $out = html_entity_decode( $out, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+    // Collapse any run of whitespace into a single space
+    $out = preg_replace( '/\s+/u', ' ', $out );
+    return trim( $out );
+}
+
 function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
     // Elementor: parse _elementor_data JSON and collect text widgets
     if ( 'builder' === get_post_meta( $post_id, '_elementor_edit_mode', true ) ) {
@@ -329,25 +347,21 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
                     $text_keys = [ 'title', 'description', 'text', 'editor', 'content',
                                    'html', 'caption', 'button_text', 'heading', 'sub_title' ];
                     if ( in_array( $key, $text_keys, true ) ) {
-                        // Strip Elementor dynamic tags (e.g. [elementor-tag id="..." name="..." settings="..."])
-                        $clean = preg_replace( '/\[elementor-tag[^\]]*\]/i', '', $value );
-                        // Strip any other registered shortcodes + HTML tags
-                        $clean = wp_strip_all_tags( strip_shortcodes( $clean ) );
-                        if ( strlen( trim( $clean ) ) > 4 ) {
-                            $texts[] = trim( $clean );
+                        $clean = cacb_clean_text( $value );
+                        if ( strlen( $clean ) > 4 ) {
+                            $texts[] = $clean;
                         }
                     }
                 } );
                 if ( ! empty( $texts ) ) {
-                    return implode( "\n", array_unique( $texts ) );
+                    return implode( "\n\n", array_unique( $texts ) );
                 }
             }
         }
     }
 
-    // Default: standard post_content — strip Elementor tags + shortcodes + HTML
-    $clean = preg_replace( '/\[elementor-tag[^\]]*\]/i', '', $post->post_content );
-    return wp_strip_all_tags( strip_shortcodes( $clean ) );
+    // Default: standard post_content
+    return cacb_clean_text( $post->post_content );
 }
 
 /**
