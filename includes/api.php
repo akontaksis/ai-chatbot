@@ -261,6 +261,10 @@ function cacb_get_tool_definitions(): array {
             'description' => 'Ταξινόμηση αποτελεσμάτων κατά τιμή. Χρησιμοποίησε "asc" για φθηνότερα πρώτα (π.χ. "ποιο είναι το φθηνότερο;"), "desc" για ακριβότερα πρώτα.',
             'enum'        => [ 'asc', 'desc' ],
         ],
+        'on_sale' => [
+            'type'        => 'boolean',
+            'description' => 'Αν είναι true, επιστρέφει μόνο προϊόντα σε προσφορά/έκπτωση (π.χ. "τι έχει προσφορά;", "τι είναι σε έκπτωση;").',
+        ],
     ];
 
     if ( ! empty( $cat_slugs ) ) {
@@ -351,6 +355,10 @@ function cacb_execute_search_products( array $args ): string {
     }
     if ( ! empty( $price_meta ) ) {
         $query_args['meta_query'] = $price_meta; // phpcs:ignore WordPress.DB.SlowDBQuery
+    }
+
+    if ( ! empty( $args['on_sale'] ) ) {
+        $query_args['on_sale'] = true;
     }
 
     if ( ! empty( $args['keyword'] ) ) {
