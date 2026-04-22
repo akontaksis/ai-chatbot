@@ -55,9 +55,26 @@ function cacb_ajax_add_to_cart(): void {
     $result = WC()->cart->add_to_cart( $product_id, $quantity );
 
     if ( $result ) {
+        // Force cart totals recalculation so fragments reflect the new item
+        WC()->cart->calculate_totals();
+
+        // Collect the mini-cart fragments WooCommerce + themes register
+        ob_start();
+        woocommerce_mini_cart();
+        $mini_cart = ob_get_clean();
+
+        $fragments = apply_filters(
+            'woocommerce_add_to_cart_fragments',
+            [
+                'div.widget_shopping_cart_content' => '<div class="widget_shopping_cart_content">' . $mini_cart . '</div>',
+            ]
+        );
+
         wp_send_json_success( [
             'cart_count'    => WC()->cart->get_cart_contents_count(),
             'cart_item_key' => $result,
+            'fragments'     => $fragments,
+            'cart_hash'     => WC()->cart->get_cart_hash(),
         ] );
     }
 

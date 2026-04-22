@@ -237,10 +237,30 @@
                 } );
             } )
             .then( function ( r ) {
-                console.log( '[CACB] add_to_cart response:', r );
                 if ( r.data && r.data.success ) {
                     btn.textContent = 'Προστέθηκε!';
                     btn.classList.add( 'cacb-card-cart-btn--done' );
+
+                    const payload = r.data.data || {};
+
+                    // Swap mini-cart fragments so the header/cart widget updates live
+                    if ( payload.fragments ) {
+                        Object.keys( payload.fragments ).forEach( function ( sel ) {
+                            document.querySelectorAll( sel ).forEach( function ( el ) {
+                                el.outerHTML = payload.fragments[ sel ];
+                            } );
+                        } );
+                    }
+
+                    // Notify WooCommerce + theme scripts that a product was added
+                    if ( window.jQuery ) {
+                        window.jQuery( document.body ).trigger( 'added_to_cart', [
+                            payload.fragments || {},
+                            payload.cart_hash || '',
+                            window.jQuery( btn ),
+                        ] );
+                    }
+                    document.body.dispatchEvent( new CustomEvent( 'wc-blocks_added_to_cart' ) );
                 } else {
                     const reason = ( r.data && r.data.data && r.data.data.reason ) || 'unknown';
                     console.warn( '[CACB] add_to_cart failed:', reason, r );
