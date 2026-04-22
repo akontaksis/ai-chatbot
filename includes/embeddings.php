@@ -742,10 +742,15 @@ function cacb_rag_add_indexed_list( array $data ): array {
     );
     // phpcs:enable
 
+    error_log( '[CACB-RAG] admin list query returned ' . count( $chunks ) . ' total chunk rows' );
+
     // Group chunks by object_id
     $grouped = [];
     foreach ( $chunks as $c ) {
         $grouped[ (int) $c->object_id ][] = $c;
+    }
+    foreach ( $grouped as $gid => $gchunks ) {
+        error_log( '[CACB-RAG] admin list: page ' . $gid . ' has ' . count( $gchunks ) . ' chunks in DB' );
     }
 
     $total_chunks = 0;
