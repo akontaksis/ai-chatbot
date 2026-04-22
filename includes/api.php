@@ -254,7 +254,7 @@ function cacb_get_tool_definitions(): array {
         ],
         'min_price' => [
             'type'        => 'number',
-            'description' => 'Ελάχιστη τιμή σε ευρώ.',
+            'description' => 'Ελάχιστη τιμή σε ευρώ (π.χ. 30 για "πάνω από 30€").',
         ],
     ];
 
