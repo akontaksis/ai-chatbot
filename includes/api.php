@@ -252,9 +252,14 @@ function cacb_get_tool_definitions(): array {
             'type'        => 'number',
             'description' => 'Μέγιστη τιμή σε ευρώ (π.χ. 15 για "κάτω από 15€").',
         ],
-        'min_price' => [
+        'min_price'     => [
             'type'        => 'number',
             'description' => 'Ελάχιστη τιμή σε ευρώ (π.χ. 30 για "πάνω από 30€").',
+        ],
+        'sort_by_price' => [
+            'type'        => 'string',
+            'description' => 'Ταξινόμηση αποτελεσμάτων κατά τιμή. Χρησιμοποίησε "asc" για φθηνότερα πρώτα (π.χ. "ποιο είναι το φθηνότερο;"), "desc" για ακριβότερα πρώτα.',
+            'enum'        => [ 'asc', 'desc' ],
         ],
     ];
 
@@ -324,11 +329,12 @@ function cacb_execute_search_products( array $args ): string {
         return 'Το WooCommerce δεν είναι ενεργό.';
     }
 
+    $sort  = strtolower( sanitize_text_field( $args['sort_by_price'] ?? '' ) );
     $query_args = [
         'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
         'status'  => 'publish',
-        'orderby' => 'date',
-        'order'   => 'DESC',
+        'orderby' => in_array( $sort, [ 'asc', 'desc' ], true ) ? 'price' : 'date',
+        'order'   => 'asc' === $sort ? 'ASC' : 'DESC',
     ];
 
     if ( ! empty( $args['category'] ) ) {
