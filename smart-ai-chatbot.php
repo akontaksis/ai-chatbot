@@ -3,14 +3,14 @@
  * Plugin Name: Smart AI Chatbot
  * Plugin URI:  https://wordpress.org/plugins/smart-ai-chatbot
  * Description: AI-powered chatbot supporting OpenAI (GPT) and Anthropic (Claude). Function calling for WooCommerce products, RAG semantic search, product cards, rate limiting, AES-256-GCM security, and full admin controls.
- * Version:     1.4.2
+ * Version:     1.4.3
  * License:     GPL-2.0+
  * Text Domain: smart-ai-chatbot
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CACB_VERSION',     '1.4.2' );
+define( 'CACB_VERSION',     '1.4.3' );
 define( 'CACB_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'CACB_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'CACB_PLUGIN_FILE', __FILE__ );
