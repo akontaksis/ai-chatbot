@@ -287,9 +287,21 @@ function cacb_render_logs_page(): void {
                 ?>
                 <tr>
                     <td style="vertical-align:top;font-size:12px;white-space:nowrap">
-                        <?php $ts = strtotime( $log->created_at . ' UTC' ); ?>
-                        <?php echo esc_html( wp_date( 'd/m/y', $ts ) ); ?><br>
-                        <span style="color:#888"><?php echo esc_html( wp_date( 'H:i', $ts ) ); ?></span>
+                        <?php
+                        // $log->created_at is stored in UTC (via current_time('mysql', true)).
+                        // Convert explicitly to the WordPress timezone for display.
+                        try {
+                            $dt = new DateTime( $log->created_at, new DateTimeZone( 'UTC' ) );
+                            $dt->setTimezone( wp_timezone() );
+                            $date_str = $dt->format( 'd/m/y' );
+                            $time_str = $dt->format( 'H:i' );
+                        } catch ( Exception $e ) {
+                            $date_str = esc_html( $log->created_at );
+                            $time_str = '';
+                        }
+                        ?>
+                        <?php echo esc_html( $date_str ); ?><br>
+                        <span style="color:#888"><?php echo esc_html( $time_str ); ?></span>
                     </td>
                     <td style="vertical-align:top">
                         <span class="cacb-badge cacb-badge-<?php echo esc_attr( $log->provider ); ?>">
