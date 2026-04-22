@@ -538,17 +538,20 @@ function cacb_call_openai( array $client_messages, string $api_key, string $mode
 
     // ── Tool call: execute and make second request ────────────────────────────
     if ( 'tool_calls' === $finish && ! empty( $asst_msg['tool_calls'] ) ) {
-        $tool_call   = $asst_msg['tool_calls'][0];
-        $tool_args   = json_decode( $tool_call['function']['arguments'] ?? '{}', true ) ?: [];
-        $tool_result = cacb_execute_search_products( $tool_args );
-
-        // Append assistant turn (with tool_calls) + tool result
+        // Append assistant turn (contains ALL parallel tool_calls)
         $messages[] = $asst_msg;
-        $messages[] = [
-            'role'         => 'tool',
-            'tool_call_id' => $tool_call['id'],
-            'content'      => $tool_result,
-        ];
+
+        // OpenAI spec: every tool_call_id MUST have a matching tool message.
+        // gpt-5-* can emit multiple parallel calls — loop over all of them.
+        foreach ( $asst_msg['tool_calls'] as $tool_call ) {
+            $tool_args   = json_decode( $tool_call['function']['arguments'] ?? '{}', true ) ?: [];
+            $tool_result = cacb_execute_search_products( $tool_args );
+            $messages[] = [
+                'role'         => 'tool',
+                'tool_call_id' => $tool_call['id'],
+                'content'      => $tool_result,
+            ];
+        }
 
         $payload2 = [
             'model'    => $model,
