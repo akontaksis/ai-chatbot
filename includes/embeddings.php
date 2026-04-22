@@ -454,6 +454,7 @@ function cacb_index_page( int $post_id ) {
 
     // Split full content into 200-word overlapping chunks
     $chunks = cacb_chunk_text( $content, 200, 40 );
+    error_log( '[CACB-RAG] page ' . $post_id . ' "' . $title . '": ' . mb_strlen( $content ) . ' chars → ' . count( $chunks ) . ' chunks. First chunk: ' . mb_substr( $chunks[0] ?? '', 0, 80 ) . '...' );
 
     foreach ( $chunks as $idx => $chunk_text ) {
         // Prepend the page title to every chunk so each embedding carries context
@@ -471,14 +472,13 @@ function cacb_index_page( int $post_id ) {
 
         // REPLACE (not INSERT) gracefully handles cases where a previous
         // partial-index run left stale rows with the same (type, id, chunk_index).
-        $wpdb->replace(
+        $result = $wpdb->replace(
             $wpdb->prefix . 'cacb_embeddings',
             [
                 'object_type'  => 'page',
                 'object_id'    => $post_id,
                 'chunk_index'  => $idx,
                 'chunk_text'   => $chunk_text,
-                // Store the full-page hash only on chunk 0 for change detection
                 'content_hash' => ( 0 === $idx ) ? $full_hash : '',
                 'embedding'    => $json,
                 'dims'         => count( $embedding ),
@@ -486,6 +486,9 @@ function cacb_index_page( int $post_id ) {
             ],
             [ '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s' ]
         );
+        if ( false === $result ) {
+            error_log( '[CACB-RAG] insert chunk ' . $idx . ' for page ' . $post_id . ' FAILED: ' . $wpdb->last_error );
+        }
     }
 
     return true;
