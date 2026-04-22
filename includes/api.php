@@ -336,12 +336,15 @@ function cacb_execute_search_products( array $args ): string {
         $query_args['category'] = [ sanitize_text_field( $args['category'] ) ];
     }
 
-    if ( ! empty( $args['max_price'] ) ) {
-        $query_args['max_price'] = (float) $args['max_price'];
-    }
-
+    $price_meta = [];
     if ( ! empty( $args['min_price'] ) ) {
-        $query_args['min_price'] = (float) $args['min_price'];
+        $price_meta[] = [ 'key' => '_price', 'value' => (float) $args['min_price'], 'compare' => '>=', 'type' => 'NUMERIC' ];
+    }
+    if ( ! empty( $args['max_price'] ) ) {
+        $price_meta[] = [ 'key' => '_price', 'value' => (float) $args['max_price'], 'compare' => '<=', 'type' => 'NUMERIC' ];
+    }
+    if ( ! empty( $price_meta ) ) {
+        $query_args['meta_query'] = $price_meta; // phpcs:ignore WordPress.DB.SlowDBQuery
     }
 
     if ( ! empty( $args['keyword'] ) ) {
