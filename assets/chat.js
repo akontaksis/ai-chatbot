@@ -178,7 +178,7 @@
                 if ( ! p ) return;
                 const card = document.createElement( 'div' );
                 card.className = 'cacb-product-card';
-                card.innerHTML = buildCardHtml( p );
+                card.innerHTML = buildCardHtml( p, id );
                 placeholder.replaceWith( card );
                 scrollToBottom();
             } )
@@ -186,7 +186,7 @@
     }
 
     // ── Build product card inner HTML ─────────────────────────────────────────
-    function buildCardHtml( p ) {
+    function buildCardHtml( p, id ) {
         const onSale = p.sale_price && p.regular_price &&
             parseFloat( p.sale_price ) < parseFloat( p.regular_price );
 
@@ -201,13 +201,57 @@
 
         const url = /^https?:\/\//.test( p.url ) ? p.url : '#';
 
+        const cartBtn = ( cfg.wcAjaxUrl && id )
+            ? '<button class="cacb-card-cart-btn" data-product-id="' + parseInt( id, 10 ) + '">Προσθήκη στο καλάθι</button>'
+            : '';
+
         return imgHtml
             + '<div class="cacb-card-body">'
             + '<div class="cacb-card-name">' + escapeHtml( p.name ) + '</div>'
             + '<div class="cacb-card-prices">' + priceHtml + '</div>'
             + '<a href="' + escapeHtml( url ) + '" class="cacb-card-btn" target="_blank" rel="noopener noreferrer">Προβολή Προϊόντος</a>'
+            + cartBtn
             + '</div>';
     }
+
+    // ── Add to cart via WooCommerce AJAX ──────────────────────────────────────
+    msgList.addEventListener( 'click', function ( e ) {
+        const btn = e.target.closest( '.cacb-card-cart-btn' );
+        if ( ! btn || ! cfg.wcAjaxUrl ) return;
+
+        const productId = btn.dataset.productId;
+        if ( ! productId ) return;
+
+        btn.disabled    = true;
+        btn.textContent = 'Γίνεται προσθήκη…';
+
+        fetch( cfg.wcAjaxUrl, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:    new URLSearchParams( { product_id: productId, quantity: 1 } ),
+        } )
+            .then( function ( res ) { return res.json(); } )
+            .then( function ( data ) {
+                if ( data.error ) {
+                    btn.textContent = 'Σφάλμα';
+                    btn.disabled    = false;
+                } else {
+                    btn.textContent = 'Προστέθηκε!';
+                    btn.classList.add( 'cacb-card-cart-btn--done' );
+                    // Refresh WooCommerce mini-cart fragments
+                    if ( data.fragments ) {
+                        Object.keys( data.fragments ).forEach( function ( sel ) {
+                            const el = document.querySelector( sel );
+                            if ( el ) el.outerHTML = data.fragments[ sel ];
+                        } );
+                    }
+                }
+            } )
+            .catch( function () {
+                btn.textContent = 'Σφάλμα';
+                btn.disabled    = false;
+            } );
+    } );
 
     // ── Typing indicator ──────────────────────────────────────────────────────
     function showTyping() { typingEl.hidden = false; scrollToBottom(); }

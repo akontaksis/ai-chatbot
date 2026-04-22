@@ -434,6 +434,28 @@
 
 .cacb-card-btn:hover { opacity: 0.85; }
 
+.cacb-card-cart-btn {
+    display: block;
+    width: 100%;
+    padding: 8px 0;
+    margin-top: 6px;
+    background: var(--cacb-accent);
+    color: var(--cacb-primary) !important;
+    text-align: center;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    box-sizing: border-box;
+    font-family: var(--cacb-font);
+}
+
+.cacb-card-cart-btn:hover:not(:disabled) { opacity: 0.85; }
+.cacb-card-cart-btn:disabled             { opacity: 0.6; cursor: not-allowed; }
+.cacb-card-cart-btn--done                { background: #4ade80; color: #1a3a1a !important; }
+
 /* ── Mobile ── */
 @media ( max-width: 480px ) {
     :root {

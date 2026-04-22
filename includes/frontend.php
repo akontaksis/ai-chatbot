@@ -23,6 +23,9 @@ function cacb_enqueue_assets() {
         'apiUrl'         => esc_url( rest_url( 'cacb/v1/chat' ) ),
         'productUrl'     => esc_url( rest_url( 'cacb/v1/product/' ) ),
         'ajaxUrl'        => esc_url( admin_url( 'admin-ajax.php' ) ),
+        'wcAjaxUrl'      => function_exists( 'wc_get_products' )
+                                ? esc_url( home_url( '/?wc-ajax=add_to_cart' ) )
+                                : '',
         'nonce'          => wp_create_nonce( 'cacb_chat_nonce' ),
         'welcomeMessage' => esc_html( get_option( 'cacb_welcome_message', 'Γεια σας! Πώς μπορώ να σας εξυπηρετήσω;' ) ),
         'errorMessage'   => esc_html__( 'Κάτι πήγε στραβά. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ),
