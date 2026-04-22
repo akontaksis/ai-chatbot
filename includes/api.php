@@ -380,6 +380,8 @@ function cacb_execute_search_products( array $args ): string {
     }
 
     $products = wc_get_products( $query_args );
+    error_log( '[CACB] query_args: ' . wp_json_encode( $query_args ) );
+    error_log( '[CACB] products found: ' . count( $products ) );
 
     if ( empty( $products ) ) {
         return 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
