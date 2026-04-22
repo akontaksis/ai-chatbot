@@ -39,14 +39,17 @@ function cacb_log_exchange( string $provider, string $model, string $user_msg, s
     if ( get_option( 'cacb_logging_enabled', '1' ) !== '1' ) return;
 
     global $wpdb;
+    // Store timestamp explicitly in UTC — don't rely on MySQL's CURRENT_TIMESTAMP
+    // which may be in server timezone rather than UTC.
     $row = [
-        'provider'  => $provider,
-        'model'     => $model,
-        'user_msg'  => $user_msg,
-        'bot_reply' => $bot_reply,
-        'ip_hash'   => cacb_log_ip_hash(),
+        'created_at' => current_time( 'mysql', true ),
+        'provider'   => $provider,
+        'model'      => $model,
+        'user_msg'   => $user_msg,
+        'bot_reply'  => $bot_reply,
+        'ip_hash'    => cacb_log_ip_hash(),
     ];
-    $fmt = [ '%s', '%s', '%s', '%s', '%s' ];
+    $fmt = [ '%s', '%s', '%s', '%s', '%s', '%s' ];
 
     // Store RAG context only when debug mode is on and context is non-empty
     if ( get_option( 'cacb_debug_mode', '0' ) === '1' && ! empty( $rag_context ) ) {
