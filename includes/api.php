@@ -323,6 +323,7 @@ function cacb_execute_search_products( array $args ): string {
     if ( ! function_exists( 'wc_get_products' ) ) {
         return 'Το WooCommerce δεν είναι ενεργό.';
     }
+    error_log( '[CACB] search_products args: ' . wp_json_encode( $args ) );
 
     $query_args = [
         'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
