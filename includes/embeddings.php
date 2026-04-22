@@ -454,7 +454,6 @@ function cacb_index_page( int $post_id ) {
 
     // Split full content into 200-word overlapping chunks
     $chunks = cacb_chunk_text( $content, 200, 40 );
-    error_log( '[CACB-RAG] index page ' . $post_id . ' ("' . $title . '"): extracted ' . str_word_count( $content ) . ' words, ' . mb_strlen( $content ) . ' chars → ' . count( $chunks ) . ' chunks' );
 
     foreach ( $chunks as $idx => $chunk_text ) {
         // Prepend the page title to every chunk so each embedding carries context
@@ -470,7 +469,9 @@ function cacb_index_page( int $post_id ) {
             return new WP_Error( 'json_encode_fail', "Failed to encode embedding for page {$post_id} chunk {$idx}." );
         }
 
-        $wpdb->insert(
+        // REPLACE (not INSERT) gracefully handles cases where a previous
+        // partial-index run left stale rows with the same (type, id, chunk_index).
+        $wpdb->replace(
             $wpdb->prefix . 'cacb_embeddings',
             [
                 'object_type'  => 'page',
