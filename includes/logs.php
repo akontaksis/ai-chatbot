@@ -57,7 +57,10 @@ function cacb_log_exchange( string $provider, string $model, string $user_msg, s
         $fmt[]              = '%s';
     }
 
-    $wpdb->insert( $wpdb->prefix . 'cacb_logs', $row, $fmt );
+    $result = $wpdb->insert( $wpdb->prefix . 'cacb_logs', $row, $fmt );
+    if ( false === $result ) {
+        error_log( '[CACB] log insert failed: ' . $wpdb->last_error );
+    }
 
     // Prune on ~10% of writes to avoid overhead every request
     if ( wp_rand( 1, 10 ) === 1 ) {
