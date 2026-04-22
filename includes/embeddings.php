@@ -320,16 +320,20 @@ function cacb_chunk_text( string $text, int $chunk_words = 200, int $overlap_wor
  * Replaces tags with spaces so </p><p> doesn't glue adjacent words together.
  */
 function cacb_clean_text( string $html ): string {
-    // Strip Elementor dynamic tags (e.g. [elementor-tag id="..." name="..." settings="..."])
-    $out = preg_replace( '/\[elementor-tag[^\]]*\]/i', ' ', $html );
-    // Strip any other registered shortcodes
+    // Each preg_replace has a null guard — if PCRE limits are hit on huge text,
+    // we fall back to the previous value instead of returning an empty string.
+    $out = preg_replace( '/\[elementor-tag[^\]]*\]/i', ' ', $html ) ?? $html;
     $out = strip_shortcodes( $out );
-    // Replace HTML tags with spaces (so tag boundaries become word boundaries)
-    $out = preg_replace( '/<[^>]+>/', ' ', $out );
-    // Decode HTML entities (&nbsp; → space, &amp; → &, etc.)
+    $stripped = preg_replace( '/<[^>]+>/', ' ', $out );
+    if ( null !== $stripped ) {
+        $out = $stripped;
+    }
     $out = html_entity_decode( $out, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-    // Collapse any run of whitespace into a single space
-    $out = preg_replace( '/\s+/u', ' ', $out );
+    // Use non-unicode regex first (faster, no PCRE unicode limit issues)
+    $collapsed = preg_replace( '/\s+/', ' ', $out );
+    if ( null !== $collapsed ) {
+        $out = $collapsed;
+    }
     return trim( $out );
 }
 
@@ -341,16 +345,32 @@ function cacb_extract_page_text( int $post_id, WP_Post $post ): string {
             $data = json_decode( $raw, true );
             if ( is_array( $data ) ) {
                 $texts = [];
-                // Recursively extract human-readable text fields from widget settings
-                array_walk_recursive( $data, function ( $value, $key ) use ( &$texts ) {
-                    if ( ! is_string( $value ) || strlen( trim( $value ) ) < 5 ) return;
-                    $text_keys = [ 'title', 'description', 'text', 'editor', 'content',
-                                   'html', 'caption', 'button_text', 'heading', 'sub_title' ];
-                    if ( in_array( $key, $text_keys, true ) ) {
-                        $clean = cacb_clean_text( $value );
-                        if ( strlen( $clean ) > 4 ) {
-                            $texts[] = $clean;
-                        }
+
+                // Keys that carry config/style, not content — skip these
+                $skip_patterns = [
+                    '_css_', '_element_', 'elType', 'widgetType', 'settings',
+                    '_border', 'background_', 'typography_', 'margin', 'padding',
+                    '_align', '_size', '_color', 'font_', 'animation', 'advanced_',
+                    '_transform', 'target', 'source', '_icon', 'html_tag',
+                ];
+
+                array_walk_recursive( $data, function ( $value, $key ) use ( &$texts, $skip_patterns ) {
+                    if ( ! is_string( $value ) ) return;
+                    $trimmed = trim( $value );
+                    if ( strlen( $trimmed ) < 10 ) return;                      // too short
+                    if ( preg_match( '/^[a-z0-9_\-#\/.]+$/i', $trimmed ) ) return; // IDs, slugs, classes, colors
+                    if ( preg_match( '/^https?:\/\//', $trimmed ) ) return;       // URLs
+
+                    // Skip config/style keys
+                    $key_str = (string) $key;
+                    foreach ( $skip_patterns as $p ) {
+                        if ( stripos( $key_str, $p ) !== false ) return;
+                    }
+
+                    $clean = cacb_clean_text( $value );
+                    // Keep only if we have at least one real word (3+ letters)
+                    if ( $clean && preg_match( '/\p{L}{3,}/u', $clean ) ) {
+                        $texts[] = $clean;
                     }
                 } );
                 if ( ! empty( $texts ) ) {
@@ -434,6 +454,7 @@ function cacb_index_page( int $post_id ) {
 
     // Split full content into 200-word overlapping chunks
     $chunks = cacb_chunk_text( $content, 200, 40 );
+    error_log( '[CACB-RAG] index page ' . $post_id . ' ("' . $title . '"): extracted ' . str_word_count( $content ) . ' words, ' . mb_strlen( $content ) . ' chars → ' . count( $chunks ) . ' chunks' );
 
     foreach ( $chunks as $idx => $chunk_text ) {
         // Prepend the page title to every chunk so each embedding carries context
