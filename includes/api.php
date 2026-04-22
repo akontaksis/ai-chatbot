@@ -323,7 +323,6 @@ function cacb_execute_search_products( array $args ): string {
     if ( ! function_exists( 'wc_get_products' ) ) {
         return 'Το WooCommerce δεν είναι ενεργό.';
     }
-    error_log( '[CACB] search_products args: ' . wp_json_encode( $args ) );
 
     $query_args = [
         'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
@@ -380,8 +379,6 @@ function cacb_execute_search_products( array $args ): string {
     }
 
     $products = wc_get_products( $query_args );
-    error_log( '[CACB] query_args: ' . wp_json_encode( $query_args ) );
-    error_log( '[CACB] products found: ' . count( $products ) );
 
     if ( empty( $products ) ) {
         return 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
@@ -392,9 +389,7 @@ function cacb_execute_search_products( array $args ): string {
         $lines[] = '• ' . cacb_product_to_text( $product, 150 ) . ' | ID:' . $product->get_id();
     }
 
-    $result = implode( "\n", $lines );
-    error_log( '[CACB] tool result: ' . $result );
-    return $result;
+    return implode( "\n", $lines );
 }
 
 // ── Main chat handler ─────────────────────────────────────────────────────────
