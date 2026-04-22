@@ -284,8 +284,9 @@ function cacb_render_logs_page(): void {
                 ?>
                 <tr>
                     <td style="vertical-align:top;font-size:12px;white-space:nowrap">
-                        <?php echo esc_html( wp_date( 'd/m/y', strtotime( $log->created_at ) ) ); ?><br>
-                        <span style="color:#888"><?php echo esc_html( wp_date( 'H:i', strtotime( $log->created_at ) ) ); ?></span>
+                        <?php $ts = strtotime( $log->created_at . ' UTC' ); ?>
+                        <?php echo esc_html( wp_date( 'd/m/y', $ts ) ); ?><br>
+                        <span style="color:#888"><?php echo esc_html( wp_date( 'H:i', $ts ) ); ?></span>
                     </td>
                     <td style="vertical-align:top">
                         <span class="cacb-badge cacb-badge-<?php echo esc_attr( $log->provider ); ?>">
