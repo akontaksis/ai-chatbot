@@ -13,22 +13,64 @@ add_action( 'wp_ajax_cacb_add_to_cart',        'cacb_ajax_add_to_cart' );
 add_action( 'wp_ajax_nopriv_cacb_add_to_cart', 'cacb_ajax_add_to_cart' );
 function cacb_ajax_add_to_cart(): void {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'cacb_chat_nonce' ) ) {
-        wp_send_json_error( 'invalid_nonce', 403 );
+        error_log( '[CACB] add_to_cart: invalid nonce' );
+        wp_send_json_error( [ 'reason' => 'invalid_nonce' ], 403 );
     }
-    if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
-        wp_send_json_error( 'no_woocommerce', 400 );
+    if ( ! function_exists( 'WC' ) ) {
+        error_log( '[CACB] add_to_cart: WooCommerce not active' );
+        wp_send_json_error( [ 'reason' => 'no_woocommerce' ], 400 );
     }
+
+    // WC cart / session are not bootstrapped on admin-ajax.php by default —
+    // wc_load_cart() initialises WC()->session, ->customer and ->cart.
+    if ( function_exists( 'wc_load_cart' ) ) {
+        wc_load_cart();
+    }
+    if ( ! WC()->cart ) {
+        error_log( '[CACB] add_to_cart: WC()->cart still null after wc_load_cart()' );
+        wp_send_json_error( [ 'reason' => 'cart_unavailable' ], 500 );
+    }
+
     $product_id = absint( $_POST['product_id'] ?? 0 );
     $quantity   = max( 1, absint( $_POST['quantity'] ?? 1 ) );
     if ( ! $product_id ) {
-        wp_send_json_error( 'missing_product_id', 400 );
+        wp_send_json_error( [ 'reason' => 'missing_product_id' ], 400 );
     }
+
+    $product = wc_get_product( $product_id );
+    if ( ! $product ) {
+        error_log( '[CACB] add_to_cart: product not found id=' . $product_id );
+        wp_send_json_error( [ 'reason' => 'product_not_found', 'id' => $product_id ], 404 );
+    }
+    if ( ! $product->is_purchasable() ) {
+        error_log( '[CACB] add_to_cart: product not purchasable id=' . $product_id );
+        wp_send_json_error( [ 'reason' => 'not_purchasable', 'id' => $product_id ], 400 );
+    }
+    if ( $product->is_type( 'variable' ) ) {
+        error_log( '[CACB] add_to_cart: variable product needs variation id=' . $product_id );
+        wp_send_json_error( [ 'reason' => 'variable_product', 'id' => $product_id ], 400 );
+    }
+
+    // Capture wc_add_notice() messages emitted during add_to_cart (stock, etc.)
     $result = WC()->cart->add_to_cart( $product_id, $quantity );
+
     if ( $result ) {
-        wp_send_json_success( [ 'cart_count' => WC()->cart->get_cart_contents_count() ] );
-    } else {
-        wp_send_json_error( 'add_failed', 400 );
+        wp_send_json_success( [
+            'cart_count'    => WC()->cart->get_cart_contents_count(),
+            'cart_item_key' => $result,
+        ] );
     }
+
+    // Collect any error notices WooCommerce queued during the failed add.
+    $notices = function_exists( 'wc_get_notices' ) ? wc_get_notices( 'error' ) : [];
+    $msgs    = array_map( static function ( $n ) {
+        return is_array( $n ) ? ( $n['notice'] ?? '' ) : (string) $n;
+    }, $notices );
+    if ( function_exists( 'wc_clear_notices' ) ) {
+        wc_clear_notices();
+    }
+    error_log( '[CACB] add_to_cart: failed id=' . $product_id . ' notices=' . wp_json_encode( $msgs ) );
+    wp_send_json_error( [ 'reason' => 'add_failed', 'notices' => $msgs ], 400 );
 }
 
 // ── Register REST routes ──────────────────────────────────────────────────────

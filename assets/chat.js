@@ -231,17 +231,26 @@
             headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
             body:        new URLSearchParams( { product_id: productId, quantity: 1, nonce: cfg.nonce } ),
         } )
-            .then( function ( res ) { return res.json(); } )
-            .then( function ( data ) {
-                if ( data.success ) {
+            .then( function ( res ) {
+                return res.json().then( function ( data ) {
+                    return { status: res.status, ok: res.ok, data: data };
+                } );
+            } )
+            .then( function ( r ) {
+                console.log( '[CACB] add_to_cart response:', r );
+                if ( r.data && r.data.success ) {
                     btn.textContent = 'Προστέθηκε!';
                     btn.classList.add( 'cacb-card-cart-btn--done' );
                 } else {
+                    const reason = ( r.data && r.data.data && r.data.data.reason ) || 'unknown';
+                    console.warn( '[CACB] add_to_cart failed:', reason, r );
                     btn.textContent = 'Σφάλμα';
+                    btn.title       = reason;
                     btn.disabled    = false;
                 }
             } )
-            .catch( function () {
+            .catch( function ( err ) {
+                console.error( '[CACB] add_to_cart network error:', err );
                 btn.textContent = 'Σφάλμα';
                 btn.disabled    = false;
             } );
