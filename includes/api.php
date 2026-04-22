@@ -333,8 +333,9 @@ function cacb_execute_search_products( array $args ): string {
     $query_args = [
         'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
         'status'  => 'publish',
-        'orderby' => in_array( $sort, [ 'asc', 'desc' ], true ) ? 'price' : 'date',
-        'order'   => 'asc' === $sort ? 'ASC' : 'DESC',
+        'orderby'  => in_array( $sort, [ 'asc', 'desc' ], true ) ? 'meta_value_num' : 'date',
+        'meta_key' => in_array( $sort, [ 'asc', 'desc' ], true ) ? '_price' : '', // phpcs:ignore WordPress.DB.SlowDBQuery
+        'order'    => 'asc' === $sort ? 'ASC' : 'DESC',
     ];
 
     if ( ! empty( $args['category'] ) ) {
