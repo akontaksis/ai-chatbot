@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.8**
+**Version 1.4.9**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
@@ -144,7 +144,9 @@ smart-ai-chatbot/
 | `origin` | enum | WC attribute `pa_proeleusi` | "Γαλλία" |
 | `sweetness` | enum | WC attribute `pa_glykytita` | "Ξηρό" |
 
-> **Σειρά αποτελεσμάτων:** πρώτα τα διαθέσιμα προϊόντα (`_stock_status`), μετά τα εξαντλημένα, και μέσα σε κάθε ομάδα κατά τιμή (αν ζητήθηκε `sort_by_price`) ή κατά ημερομηνία. Τα εξαντλημένα δεν αφαιρούνται, ώστε το bot να μπορεί να πει «υπάρχει αλλά έχει τελειώσει».
+> **Σειρά αποτελεσμάτων:** πρώτα τα διαθέσιμα προϊόντα (`_stock_status`), μετά τα εξαντλημένα, και μέσα σε κάθε ομάδα κατά τιμή (αν ζητήθηκε `sort_by_price`) ή κατά ημερομηνία. Τα εξαντλημένα δεν αφαιρούνται, ώστε το bot να μπορεί να πει «υπάρχει αλλά έχει τελειώσει». Στο αποτέλεσμα που βλέπει το LLM είναι σε ξεχωριστή ενότητα `ΕΞΑΝΤΛΗΜΕΝΑ`, με οδηγία να μην τα προτείνει.
+
+> **Debug:** με ενεργό Debug mode, κάθε αναζήτηση (arguments + αποτέλεσμα) αποθηκεύεται στα Logs μαζί με το RAG context.
 
 > **Dynamic enums:** Οι τιμές για `category`, `year`, `grape_variety`, `region`, `origin`, `sweetness` διαβάζονται **δυναμικά** από τα WooCommerce attributes/categories του site. Κάθε νέο attribute term εμφανίζεται αυτόματα στο tool schema χωρίς code change.
 
@@ -378,6 +380,13 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### v1.4.9 — Product answers fixes
+
+**Αναζήτηση προϊόντων** (`includes/api.php`)
+- Τα αποτελέσματα χωρίζονται σε `ΔΙΑΘΕΣΙΜΑ` / `ΕΞΑΝΤΛΗΜΕΝΑ`. Στην 1.4.8 το «φθηνότερο λευκό» έβγαζε εξαντλημένο κρασί, γιατί το LLM σύγκρινε τιμές σε όλη τη λίστα
+- Το LLM δεν κρατά πλέον όριο τιμής από προηγούμενη ερώτηση (π.χ. «ακριβότερο κόκκινο» μετά από «κάτω από 20€» έψαχνε μόνο κάτω από 20€)
+- Debug mode: οι αναζητήσεις προϊόντων (φίλτρα + αποτελέσματα) καταγράφονται στα Logs
 
 ### v1.4.8 — Search quality & cost control
 
