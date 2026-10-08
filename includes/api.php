@@ -647,94 +647,88 @@ function cacb_call_claude( array $client_messages, string $api_key, string $mode
         'Content-Type'      => 'application/json',
     ];
 
-    $response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
-        'timeout' => 30,
-        'headers' => $headers,
-        'body'    => wp_json_encode( $payload ),
-    ] );
+    // Tool loop: Claude may search, read the results, then search again. Every
+    // follow-up request must keep 'tools' defined because the conversation now
+    // contains tool_use / tool_result blocks — the API rejects it otherwise.
+    $max_rounds = 3;
+    for ( $round = 1; $round <= $max_rounds; $round++ ) {
+        if ( ! empty( $tools ) && $round === $max_rounds ) {
+            // Last round: force a text answer so we never end on a bare tool_use
+            $payload['tool_choice'] = [ 'type' => 'none' ];
+        }
 
-    if ( is_wp_error( $response ) ) {
-        error_log( '[CACB] Claude connection error: ' . $response->get_error_message() );
-        return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-    }
+        $response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
+            'timeout' => 30,
+            'headers' => $headers,
+            'body'    => wp_json_encode( $payload ),
+        ] );
 
-    $http_code = wp_remote_retrieve_response_code( $response );
-    $body      = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( is_wp_error( $response ) ) {
+            error_log( "[CACB] Claude connection error (round {$round}): " . $response->get_error_message() );
+            return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+        }
 
-    if ( $http_code !== 200 || ! is_array( $body ) ) {
-        $err = is_array( $body ) ? ( $body['error']['message'] ?? 'Unknown Claude error' ) : 'Invalid response body';
-        error_log( "[CACB] Claude API error {$http_code}: {$err}" );
-        return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-    }
+        $http_code = wp_remote_retrieve_response_code( $response );
+        $body      = json_decode( wp_remote_retrieve_body( $response ), true );
 
-    // ── Tool use: execute and make second request ─────────────────────────────
-    if ( 'tool_use' === ( $body['stop_reason'] ?? '' ) ) {
-        $tool_use = null;
-        foreach ( ( $body['content'] ?? [] ) as $block ) {
-            if ( 'tool_use' === ( $block['type'] ?? '' ) ) {
-                $tool_use = $block;
-                break;
+        if ( $http_code !== 200 || ! is_array( $body ) ) {
+            $err = is_array( $body ) ? ( $body['error']['message'] ?? 'Unknown Claude error' ) : 'Invalid response body';
+            error_log( "[CACB] Claude API error (round {$round}) {$http_code}: {$err}" );
+            return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
+        }
+
+        $content = is_array( $body['content'] ?? null ) ? $body['content'] : [];
+
+        // Claude can request several searches in one turn — every tool_use block
+        // needs its own tool_result in the next user message.
+        $tool_results = [];
+        if ( 'tool_use' === ( $body['stop_reason'] ?? '' ) ) {
+            foreach ( $content as $block ) {
+                if ( 'tool_use' !== ( $block['type'] ?? '' ) ) {
+                    continue;
+                }
+                $tool_args = $block['input'] ?? [];
+                if ( ! is_array( $tool_args ) ) {
+                    error_log( '[CACB] Claude tool_use input not array: ' . var_export( $tool_args, true ) );
+                    $tool_args = [];
+                }
+                $tool_results[] = [
+                    'type'        => 'tool_result',
+                    'tool_use_id' => $block['id'],
+                    'content'     => cacb_execute_search_products( $tool_args ),
+                ];
             }
         }
 
-        if ( $tool_use ) {
-            $tool_args = $tool_use['input'] ?? [];
-            if ( ! is_array( $tool_args ) ) {
-                error_log( '[CACB] Claude tool_use input not array: ' . var_export( $tool_args, true ) );
-                $tool_args = [];
+        if ( empty( $tool_results ) ) {
+            // Final answer — join all text blocks (there can be more than one)
+            $texts = [];
+            foreach ( $content as $block ) {
+                if ( 'text' === ( $block['type'] ?? '' ) && '' !== trim( (string) ( $block['text'] ?? '' ) ) ) {
+                    $texts[] = $block['text'];
+                }
             }
-            $tool_result = cacb_execute_search_products( $tool_args );
-
-            // Append assistant turn + tool result as user message
-            $messages   = $client_messages;
-            $messages[] = [ 'role' => 'assistant', 'content' => $body['content'] ];
-            $messages[] = [
-                'role'    => 'user',
-                'content' => [ [
-                    'type'        => 'tool_result',
-                    'tool_use_id' => $tool_use['id'],
-                    'content'     => $tool_result,
-                ] ],
-            ];
-
-            $response2 = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
-                'timeout' => 30,
-                'headers' => $headers,
-                'body'    => wp_json_encode( [
-                    'model'       => $model,
-                    'max_tokens'  => $max_tokens,
-                    'temperature' => 0.2,
-                    'system'      => $system_prompt,
-                    'messages'    => $messages,
-                ] ),
-            ] );
-
-            if ( is_wp_error( $response2 ) ) {
-                error_log( '[CACB] Claude connection error (2nd call): ' . $response2->get_error_message() );
-                return new WP_Error( 'claude_unreachable', __( 'Δεν ήταν δυνατή η σύνδεση. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-            }
-
-            $http_code2 = wp_remote_retrieve_response_code( $response2 );
-            $body2      = json_decode( wp_remote_retrieve_body( $response2 ), true );
-
-            if ( $http_code2 !== 200 || ! is_array( $body2 ) ) {
-                $err = is_array( $body2 ) ? ( $body2['error']['message'] ?? 'Unknown Claude error' ) : 'Invalid response body';
-                error_log( "[CACB] Claude API error (2nd call) {$http_code2}: {$err}" );
-                return new WP_Error( 'claude_error', __( 'Παρουσιάστηκε σφάλμα. Παρακαλώ δοκιμάστε αργότερα.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-            }
-
-            $reply = $body2['content'][0]['text'] ?? '';
-            if ( empty( $reply ) ) {
+            $reply = trim( implode( "\n\n", $texts ) );
+            if ( '' === $reply ) {
+                error_log( '[CACB] Claude empty reply. model=' . $model . ' stop=' . ( $body['stop_reason'] ?? '' ) );
                 return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
             }
             return $reply;
         }
+
+        // json_decode(..., true) turns an empty `input: {}` into [], which would be
+        // re-encoded as a JSON array and rejected — restore it as an object.
+        foreach ( $content as &$block ) {
+            if ( 'tool_use' === ( $block['type'] ?? '' ) && empty( $block['input'] ) ) {
+                $block['input'] = new stdClass();
+            }
+        }
+        unset( $block );
+
+        $payload['messages'][] = [ 'role' => 'assistant', 'content' => $content ];
+        $payload['messages'][] = [ 'role' => 'user', 'content' => $tool_results ];
     }
 
-    // ── Direct answer (no tool use) ───────────────────────────────────────────
-    $reply = $body['content'][0]['text'] ?? '';
-    if ( empty( $reply ) ) {
-        return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
-    }
-    return $reply;
+    // Unreachable: the last round forces tool_choice 'none'
+    return new WP_Error( 'empty_response', __( 'Κενή απάντηση από το AI.', 'smart-ai-chatbot' ), [ 'status' => 502 ] );
 }
