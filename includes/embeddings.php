@@ -675,10 +675,12 @@ function cacb_get_smart_context( array $messages ): string {
         return '';
     }
 
-    // Build a context-aware query from the last 3 messages so the RAG
+    // Build a context-aware query from the last 2 user messages so the RAG
     // understands follow-up questions ("Και αυτά είναι γλυκά;") correctly.
-    $recent = array_slice( $messages, -3 );
-    $query  = implode( ' ', array_column( $recent, 'content' ) );
+    // Bot replies are left out: they are long and dilute the embedding.
+    $user_msgs = array_filter( $messages, static fn( $m ) => 'user' === $m['role'] );
+    $recent    = array_slice( $user_msgs, -2 );
+    $query     = implode( ' ', array_column( $recent, 'content' ) );
     $query  = trim( $query );
 
     if ( empty( $query ) ) {
