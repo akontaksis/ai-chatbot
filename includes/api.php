@@ -1,7 +1,8 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-// ── Nonce refresh endpoint (called when nonce expires after 12-24h) ───────────
+// ── Nonce refresh endpoint — used by add-to-cart when a cached page carries a
+// nonce older than 12-24h (the chat endpoint itself has no nonce) ─────────────
 add_action( 'wp_ajax_cacb_refresh_nonce',        'cacb_ajax_refresh_nonce' );
 add_action( 'wp_ajax_nopriv_cacb_refresh_nonce', 'cacb_ajax_refresh_nonce' );
 function cacb_ajax_refresh_nonce(): void {

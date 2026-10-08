@@ -225,16 +225,30 @@
         btn.disabled    = true;
         btn.textContent = 'Γίνεται προσθήκη…';
 
-        fetch( cfg.ajaxUrl + '?action=cacb_add_to_cart', {
-            method:      'POST',
-            credentials: 'same-origin',
-            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body:        new URLSearchParams( { product_id: productId, quantity: 1, nonce: cfg.nonce } ),
-        } )
-            .then( function ( res ) {
+        function postAddToCart() {
+            return fetch( cfg.ajaxUrl + '?action=cacb_add_to_cart', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body:        new URLSearchParams( { product_id: productId, quantity: 1, nonce: cfg.nonce } ),
+            } ).then( function ( res ) {
                 return res.json().then( function ( data ) {
                     return { status: res.status, ok: res.ok, data: data };
                 } );
+            } );
+        }
+
+        postAddToCart()
+            .then( function ( r ) {
+                // A page served from cache can carry a nonce older than 24h —
+                // fetch a fresh one and retry once.
+                const reason = r.data && r.data.data && r.data.data.reason;
+                if ( r.status === 403 && reason === 'invalid_nonce' ) {
+                    return refreshNonce().then( function ( ok ) {
+                        return ok ? postAddToCart() : r;
+                    } );
+                }
+                return r;
             } )
             .then( function ( r ) {
                 if ( r.data && r.data.success ) {
@@ -280,7 +294,7 @@
     function showTyping() { typingEl.hidden = false; scrollToBottom(); }
     function hideTyping() { typingEl.hidden = true; }
 
-    // ── Refresh expired nonce ─────────────────────────────────────────────────
+    // ── Refresh expired add-to-cart nonce ─────────────────────────────────────
     async function refreshNonce() {
         try {
             const res  = await fetch( cfg.ajaxUrl + '?action=cacb_refresh_nonce' );
@@ -309,23 +323,11 @@
         saveHistory();
 
         try {
-            let res = await fetch( cfg.apiUrl, {
+            const res = await fetch( cfg.apiUrl, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify( { messages: chatHistory, nonce: cfg.nonce } ),
+                body:    JSON.stringify( { messages: chatHistory } ),
             } );
-
-            // Auto-refresh nonce if expired and retry once
-            if ( res.status === 403 ) {
-                const refreshed = await refreshNonce();
-                if ( refreshed ) {
-                    res = await fetch( cfg.apiUrl, {
-                        method:  'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body:    JSON.stringify( { messages: chatHistory, nonce: cfg.nonce } ),
-                    } );
-                }
-            }
 
             const data = await res.json();
             hideTyping();
