@@ -181,22 +181,11 @@ function cacb_check_rate_limit(): bool {
     return true;
 }
 
+// Only REMOTE_ADDR is trusted: proxy headers (X-Forwarded-For, CF-Connecting-IP)
+// are client-controlled and would let anyone bypass the rate limit.
 function cacb_get_client_ip(): string {
-    $headers = [
-        'HTTP_CF_CONNECTING_IP',
-        'HTTP_X_FORWARDED_FOR',
-        'HTTP_X_REAL_IP',
-        'REMOTE_ADDR',
-    ];
-    foreach ( $headers as $header ) {
-        if ( ! empty( $_SERVER[ $header ] ) ) {
-            $ip = trim( explode( ',', $_SERVER[ $header ] )[0] );
-            if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-                return $ip;
-            }
-        }
-    }
-    return '0.0.0.0';
+    $ip = (string) ( $_SERVER['REMOTE_ADDR'] ?? '' );
+    return filter_var( $ip, FILTER_VALIDATE_IP ) ? $ip : '0.0.0.0';
 }
 
 // ── Tool definitions for WooCommerce product search ───────────────────────────

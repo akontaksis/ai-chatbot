@@ -66,16 +66,7 @@ function cacb_log_exchange( string $provider, string $model, string $user_msg, s
 }
 
 function cacb_log_ip_hash(): string {
-    $headers = [ 'HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR' ];
-    foreach ( $headers as $h ) {
-        if ( ! empty( $_SERVER[ $h ] ) ) {
-            $ip = trim( explode( ',', (string) $_SERVER[ $h ] )[0] );
-            if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-                return hash( 'sha256', $ip );
-            }
-        }
-    }
-    return hash( 'sha256', '0.0.0.0' );
+    return hash( 'sha256', cacb_get_client_ip() );
 }
 
 function cacb_prune_logs(): void {
