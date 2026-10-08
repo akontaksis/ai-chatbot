@@ -483,21 +483,37 @@ function cacb_index_page( int $post_id ) {
 
         // REPLACE (not INSERT) gracefully handles cases where a previous
         // partial-index run left stale rows with the same (type, id, chunk_index).
-        $wpdb->replace(
+        // content_hash stays empty until every chunk is stored (see below).
+        $saved = $wpdb->replace(
             $wpdb->prefix . 'cacb_embeddings',
             [
                 'object_type'  => 'page',
                 'object_id'    => $post_id,
                 'chunk_index'  => $idx,
                 'chunk_text'   => $chunk_text,
-                'content_hash' => ( 0 === $idx ) ? $full_hash : '',
+                'content_hash' => '',
                 'embedding'    => $json,
                 'dims'         => count( $embedding ),
                 'indexed_at'   => current_time( 'mysql' ),
             ],
             [ '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s' ]
         );
+        if ( false === $saved ) {
+            return new WP_Error( 'db_insert_fail', "Failed to store page {$post_id} chunk {$idx}: {$wpdb->last_error}" );
+        }
     }
+
+    // Mark the page as fully indexed only now. If any chunk failed above, chunk 0
+    // has no hash, so the next run re-indexes the page instead of skipping it.
+    $wpdb->update(
+        $wpdb->prefix . 'cacb_embeddings',
+        // indexed_at is set explicitly so the column's ON UPDATE CURRENT_TIMESTAMP
+        // (DB server timezone) doesn't override the WP-timezone value.
+        [ 'content_hash' => $full_hash, 'indexed_at' => current_time( 'mysql' ) ],
+        [ 'object_type' => 'page', 'object_id' => $post_id, 'chunk_index' => 0 ],
+        [ '%s', '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
 
     return true;
 }
