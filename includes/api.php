@@ -318,37 +318,42 @@ function cacb_execute_search_products( array $args ): string {
         return 'Το WooCommerce δεν είναι ενεργό.';
     }
 
-    $sort  = strtolower( sanitize_text_field( $args['sort_by_price'] ?? '' ) );
+    $sort = strtolower( sanitize_text_field( $args['sort_by_price'] ?? '' ) );
+
+    // In-stock products first, then out-of-stock: '_stock_status' sorts
+    // alphabetically as instock < onbackorder < outofstock. Out-of-stock items
+    // are kept (not filtered) so the bot can still say "we have it, sold out".
+    $meta_query = [
+        'cacb_stock' => [ 'key' => '_stock_status', 'compare' => 'EXISTS' ],
+    ];
+    $orderby = [ 'cacb_stock' => 'ASC' ];
+
+    if ( in_array( $sort, [ 'asc', 'desc' ], true ) ) {
+        $meta_query['cacb_price'] = [ 'key' => '_price', 'compare' => 'EXISTS', 'type' => 'NUMERIC' ];
+        $orderby['cacb_price']    = strtoupper( $sort );
+    } else {
+        $orderby['date'] = 'DESC';
+    }
+
+    if ( ! empty( $args['min_price'] ) ) {
+        $meta_query[] = [ 'key' => '_price', 'value' => (float) $args['min_price'], 'compare' => '>=', 'type' => 'NUMERIC' ];
+    }
+    if ( ! empty( $args['max_price'] ) ) {
+        $meta_query[] = [ 'key' => '_price', 'value' => (float) $args['max_price'], 'compare' => '<=', 'type' => 'NUMERIC' ];
+    }
+    if ( ! empty( $args['on_sale'] ) ) {
+        $meta_query[] = [ 'key' => '_sale_price', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ];
+    }
+
     $query_args = [
-        'limit'   => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
-        'status'  => 'publish',
-        'orderby'  => in_array( $sort, [ 'asc', 'desc' ], true ) ? 'meta_value_num' : 'date',
-        'meta_key' => in_array( $sort, [ 'asc', 'desc' ], true ) ? '_price' : '', // phpcs:ignore WordPress.DB.SlowDBQuery
-        'order'    => 'asc' === $sort ? 'ASC' : 'DESC',
+        'limit'      => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
+        'status'     => 'publish',
+        'meta_query' => $meta_query, // phpcs:ignore WordPress.DB.SlowDBQuery
+        'orderby'    => $orderby,
     ];
 
     if ( ! empty( $args['category'] ) ) {
         $query_args['category'] = [ sanitize_text_field( $args['category'] ) ];
-    }
-
-    $price_meta = [];
-    if ( ! empty( $args['min_price'] ) ) {
-        $price_meta[] = [ 'key' => '_price', 'value' => (float) $args['min_price'], 'compare' => '>=', 'type' => 'NUMERIC' ];
-    }
-    if ( ! empty( $args['max_price'] ) ) {
-        $price_meta[] = [ 'key' => '_price', 'value' => (float) $args['max_price'], 'compare' => '<=', 'type' => 'NUMERIC' ];
-    }
-    if ( ! empty( $price_meta ) ) {
-        $query_args['meta_query'] = $price_meta; // phpcs:ignore WordPress.DB.SlowDBQuery
-    }
-
-    if ( ! empty( $args['on_sale'] ) ) {
-        $sale_meta = [ 'key' => '_sale_price', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ];
-        if ( ! empty( $query_args['meta_query'] ) ) {
-            $query_args['meta_query'][] = $sale_meta;
-        } else {
-            $query_args['meta_query'] = [ $sale_meta ]; // phpcs:ignore WordPress.DB.SlowDBQuery
-        }
     }
 
     if ( ! empty( $args['keyword'] ) ) {
