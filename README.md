@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.7**
+**Version 1.4.8**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
@@ -112,7 +112,7 @@ smart-ai-chatbot/
 | `/cacb/v1/chat` | POST | Public + rate limit | Αποστολή μηνύματος → AI response |
 | `/cacb/v1/product/{id}` | GET | Public | Δεδομένα product card (όνομα, τιμή, εικόνα) |
 | `wp-admin/admin-ajax.php?action=cacb_add_to_cart` | POST | Nonce | Add to cart από chat |
-| `wp-admin/admin-ajax.php?action=cacb_refresh_nonce` | POST | Public | Refresh nonce μετά από 12-24h |
+| `wp-admin/admin-ajax.php?action=cacb_refresh_nonce` | GET | Public | Νέο nonce για το add-to-cart όταν η σελίδα (π.χ. από cache) έχει nonce παλιότερο από 12-24h |
 
 ---
 
@@ -143,6 +143,8 @@ smart-ai-chatbot/
 | `region` | enum | WC attribute `pa_perioxi` | "Σαντορίνη" |
 | `origin` | enum | WC attribute `pa_proeleusi` | "Γαλλία" |
 | `sweetness` | enum | WC attribute `pa_glykytita` | "Ξηρό" |
+
+> **Σειρά αποτελεσμάτων:** πρώτα τα διαθέσιμα προϊόντα (`_stock_status`), μετά τα εξαντλημένα, και μέσα σε κάθε ομάδα κατά τιμή (αν ζητήθηκε `sort_by_price`) ή κατά ημερομηνία. Τα εξαντλημένα δεν αφαιρούνται, ώστε το bot να μπορεί να πει «υπάρχει αλλά έχει τελειώσει».
 
 > **Dynamic enums:** Οι τιμές για `category`, `year`, `grape_variety`, `region`, `origin`, `sweetness` διαβάζονται **δυναμικά** από τα WooCommerce attributes/categories του site. Κάθε νέο attribute term εμφανίζεται αυτόματα στο tool schema χωρίς code change.
 
@@ -182,7 +184,7 @@ smart-ai-chatbot/
 
 ### Retrieval Pipeline
 
-1. Embedding της τελευταίας 3 μηνυμάτων (context-aware για follow-ups)
+1. Embedding των 2 τελευταίων μηνυμάτων **του χρήστη** (context-aware για follow-ups· οι απαντήσεις του bot δεν μπαίνουν στο query)
 2. Load όλων των stored embeddings και υπολογισμός **cosine similarity** σε PHP
 3. Filter: score ≥ `0.18` threshold (αποφυγή noise)
 4. Deduplication: μόνο το καλύτερο chunk ανά σελίδα
@@ -299,6 +301,7 @@ CREATE TABLE wp_cacb_embeddings (
 | `cacb_history_limit` | 2–50 | 10 | Recent messages για context |
 | `cacb_wc_limit` | 1–20 | 8 | Max αποτελέσματα `search_products` |
 | `CACB_MAX_MSG_CHARS` | — | 4000 | Max χαρακτήρες ανά μήνυμα user |
+| `CACB_MAX_HISTORY_CHARS` | — | 12000 | Max συνολικοί χαρακτήρες ιστορικού ανά request (κρατούνται τα νεότερα μηνύματα) |
 
 ### System Prompt — Παράδειγμα για κάβα κρασιών
 
@@ -375,6 +378,22 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### v1.4.8 — Search quality & cost control
+
+**Αναζήτηση προϊόντων** (`includes/api.php`)
+- Τα διαθέσιμα προϊόντα επιστρέφονται πρώτα· τα εξαντλημένα δεν γεμίζουν πλέον τα αποτελέσματα
+
+**Έλεγχος κόστους** (`includes/api.php`)
+- Όριο 12 000 χαρακτήρων στο συνολικό ιστορικό που στέλνει ο browser (πριν: έως `history_limit` × 4 000)
+- Το ιστορικό ξεκινά πάντα με μήνυμα χρήστη· κενό ιστορικό επιστρέφει 400 χωρίς κλήση στον provider
+
+**RAG** (`includes/embeddings.php`)
+- Το retrieval query φτιάχνεται μόνο από τα 2 τελευταία μηνύματα του χρήστη — οι μεγάλες απαντήσεις του bot «θόλωναν» την αναζήτηση
+
+**Add to cart** (`assets/chat.js`)
+- Αν το nonce έχει λήξει (σελίδα από cache), παίρνει νέο και ξαναδοκιμάζει μία φορά
+- Αφαίρεση του nonce και του retry από το chat request (δεν το ελέγχει πλέον ο server)
 
 ### v1.4.7 — Security & reliability fixes
 
