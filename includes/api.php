@@ -471,12 +471,10 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     }
     cacb_log_exchange( $provider, $model, $last_user_msg, $result, $rag_context );
 
-    // 7. Return sanitized reply
-    return rest_ensure_response( [
-        'reply' => wp_kses( $result, [
-            'br' => [], 'strong' => [], 'em' => [], 'a' => [ 'href' => [], 'target' => [] ],
-        ] ),
-    ] );
+    // 7. Return the reply as plain text. chat.js escapes it before rendering, so
+    // running wp_kses here only double-encoded "&" into a visible "&amp;" and
+    // stripped text like "< 15€".
+    return rest_ensure_response( [ 'reply' => $result ] );
 }
 
 // ── Provider: OpenAI ──────────────────────────────────────────────────────────
