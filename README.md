@@ -388,6 +388,7 @@ Content-Type: application/json
 - Το 2ο request δεν περιείχε `tools`, οπότε το API απέρριπτε κάθε αναζήτηση προϊόντων με Claude
 - Απάντηση σε όλα τα `tool_use` blocks (parallel searches), έως 3 γύροι αναζήτησης
 - Ένωση όλων των text blocks στην απάντηση, όχι μόνο του πρώτου
+- ⚠️ Δεν έχει δοκιμαστεί ακόμα σε live site (ο λογαριασμός Anthropic δεν είχε credits) — η 1.4.7 επιβεβαιώθηκε μόνο με OpenAI
 
 **Chat output** (`includes/api.php`)
 - Το reply επιστρέφεται ως plain text. Το `wp_kses()` μετέτρεπε το `&` σε ορατό `&amp;` και έκοβε κείμενο όπως `< 15€`
