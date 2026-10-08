@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.9**
+**Version 1.4.10**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
@@ -97,7 +97,7 @@ smart-ai-chatbot/
        │              ┌───────────────┐                ▼
        │              │ RAG context   │        ┌─────────────────┐
        │              │ (cosine sim)  │        │ search_products │
-       │              └───────────────┘        │ wc_get_products │
+       │              └───────────────┘        │ WP_Query        │
        │                      │                └────────┬────────┘
        │                      ▼                         │
        │              ┌───────────────┐                 │
@@ -118,13 +118,13 @@ smart-ai-chatbot/
 
 ## WooCommerce Integration — Function Calling
 
-Αν το WooCommerce είναι ενεργό, το plugin εκθέτει στο LLM ένα **tool** με όνομα `search_products`. Το LLM αποφασίζει πότε και με ποια φίλτρα να το καλέσει. Η αναζήτηση τρέχει **server-side** μέσω `wc_get_products()` — **τίποτα δεν εκτίθεται στο LLM από τον κατάλογο**, εκτός από τα αποτελέσματα του κάθε query.
+Αν το WooCommerce είναι ενεργό, το plugin εκθέτει στο LLM ένα **tool** με όνομα `search_products`. Το LLM αποφασίζει πότε και με ποια φίλτρα να το καλέσει. Η αναζήτηση τρέχει **server-side** μέσω `WP_Query` — **τίποτα δεν εκτίθεται στο LLM από τον κατάλογο**, εκτός από τα αποτελέσματα του κάθε query.
 
 ### 2-turn Flow
 
 1. **1ο API call** — αποστολή μηνύματος + tool definition
 2. LLM αποφασίζει να καλέσει `search_products` με συγκεκριμένα φίλτρα
-3. PHP εκτελεί `wc_get_products()` με τα φίλτρα
+3. PHP εκτελεί `WP_Query` με τα φίλτρα
 4. **2ο API call** — τα αποτελέσματα επιστρέφονται στο LLM για τη φυσική γλωσσική απάντηση
 5. LLM απαντά με `[PRODUCT:ID]` markers → JavaScript εμφανίζει product cards
 
@@ -161,15 +161,19 @@ smart-ai-chatbot/
 | Tool rounds | 1 (2ο call χωρίς tools) | Έως 3 — στον τελευταίο `tool_choice: none` για να δώσει κείμενο |
 | System prompt | Μέσα στα `messages[]` | Ξεχωριστό πεδίο `system:` |
 
-### Reliability Fixes (v1.4.6)
+### Query implementation (v1.4.10)
 
-Το `wc_get_products()` με `min_price`, `max_price`, `orderby => 'price'`, και `on_sale => true` στηρίζεται στον πίνακα `wc_product_meta_lookup` του WooCommerce, που σε ορισμένες εγκαταστάσεις δεν είναι πλήρως συγχρονισμένος. Αυτό προκαλούσε **false negatives** (κενά αποτελέσματα ενώ υπήρχαν προϊόντα). Η λύση:
+Η αναζήτηση τρέχει με **`WP_Query`** (post type `product`) και μετά φορτώνει τα προϊόντα με `wc_get_product()`. **Όχι** με `wc_get_products()`:
 
-- **Price filtering:** `meta_query` απευθείας στο `_price` meta
-- **Price sorting:** `orderby => 'meta_value_num'` με `meta_key => '_price'`
-- **On-sale filter:** `meta_query` στο `_sale_price > 0`
+- Το `wc_get_products()` **πετάει σιωπηλά όποιο `meta_query` του δοθεί** (`WC_Data_Store_WP::get_wp_query_args` παραλείπει το key). Οπότε φίλτρα τιμής/προσφορών και ταξινόμηση με named meta clauses απλώς αγνοούνταν (v1.4.6–v1.4.9).
+- Τα native `min_price` / `max_price` / `on_sale` του `wc_get_products()` στηρίζονται στον `wc_product_meta_lookup`, που σε ορισμένες εγκαταστάσεις δεν είναι συγχρονισμένος (false negatives).
 
-Αυτή η προσέγγιση είναι ανεξάρτητη από το lookup table και δουλεύει παντού.
+Φίλτρα και ταξινόμηση:
+
+- **Price filtering:** `meta_query` στο `_price`
+- **On-sale filter:** `meta_query` στο `_sale_price > 0` (μόνο simple products — στα variable η έκπτωση είναι στις παραλλαγές)
+- **Ταξινόμηση:** named clauses — πρώτα `_stock_status` ASC, μετά `_price` (αν ζητήθηκε) ή ημερομηνία
+- **Κατηγορία:** περιλαμβάνει και όποια άλλη κατηγορία έχει **το ίδιο όνομα** με το slug που διάλεξε το LLM (διπλές κατηγορίες από imports)
 
 ---
 
@@ -380,6 +384,14 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### v1.4.10 — Product search query fix
+
+**Αναζήτηση προϊόντων** (`includes/api.php`)
+- Η αναζήτηση γίνεται με `WP_Query` αντί για `wc_get_products()`, που αγνοούσε το `meta_query`. Τα φίλτρα `min_price` / `max_price` / `on_sale` **δεν εφαρμόζονταν ποτέ** (από v1.4.6) και η ταξινόμηση κατά τιμή / διαθεσιμότητα δεν δούλευε στις v1.4.8–v1.4.9
+- Η κατηγορία περιλαμβάνει όλες τις κατηγορίες με το ίδιο όνομα (π.χ. δύο «Κόκκινα Κρασιά» με διαφορετικό slug)
+- Για εξαντλημένο προϊόν που ζήτησε ρητά ο πελάτης, το bot λέει «το έχουμε, αλλά είναι προσωρινά εξαντλημένο»
+- Debug log: δείχνει και τις κατηγορίες που χρησιμοποιήθηκαν τελικά
 
 ### v1.4.9 — Product answers fixes
 
