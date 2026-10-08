@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.11**
+**Version 1.4.12**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
@@ -301,7 +301,7 @@ CREATE TABLE wp_cacb_embeddings (
 
 | Option | Εύρος | Default | Περιγραφή |
 |---|---|---|---|
-| `cacb_rate_limit` | 1–200 | 20 | Max μηνύματα ανά IP/hour |
+| `cacb_rate_limit` | 1–200 | 20 | Max μηνύματα ανά IP ανά ώρα (σταθερό ωριαίο παράθυρο) |
 | `cacb_max_tokens` | 100–2000 | 500 | Max μέγεθος απάντησης AI |
 | `cacb_history_limit` | 2–50 | 10 | Recent messages για context |
 | `cacb_wc_limit` | 1–20 | 8 | Max αποτελέσματα `search_products` |
@@ -383,6 +383,14 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### v1.4.12 — No invented products, fixed rate-limit window
+
+**Κατάλογος στο system prompt** (`includes/api.php`)
+- Στο «Τι άλλο έχετε εκτός από κρασιά;» το AI απάντησε χωρίς αναζήτηση και ανέφερε μαρμελάδες, βότανα και αλάτι, που δεν πουλάει το κατάστημα. Όταν το WooCommerce search είναι ενεργό, το system prompt περιέχει πλέον όλες τις κατηγορίες (ιεραρχία, slug, πλήθος προϊόντων) με οδηγία να μην αναφέρεται ποτέ είδος εκτός λίστας και να γίνεται αναζήτηση για κατηγορίες με ασαφές περιεχόμενο
+
+**Rate limit** (`includes/api.php`)
+- Σταθερό ωριαίο παράθυρο: η ώρα είναι μέρος του transient key. Πριν, κάθε μήνυμα ξανάρχιζε το χρονόμετρο της 1 ώρας, οπότε ένας ενεργός επισκέπτης μπλοκαριζόταν μετά από 20 μηνύματα ακόμα κι αν τα έστειλε μέσα σε πολλές ώρες
 
 ### v1.4.11 — Product name encoding
 

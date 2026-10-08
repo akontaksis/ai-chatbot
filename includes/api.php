@@ -173,7 +173,10 @@ function cacb_sanitize_messages( $messages ) {
 function cacb_check_rate_limit(): bool {
     $limit = (int) get_option( 'cacb_rate_limit', 20 );
     $ip    = cacb_get_client_ip();
-    $key   = 'cacb_rl_' . hash( 'sha256', $ip );
+    // Fixed hourly window: the clock hour is part of the key. set_transient()
+    // restarts the expiry on every write, so with one key per IP an active
+    // visitor's counter never reset and 20 messages spread over hours blocked them.
+    $key   = 'cacb_rl_' . hash( 'sha256', $ip . '|' . gmdate( 'YmdH' ) );
     $count = (int) get_transient( $key );
 
     if ( $count >= $limit ) {
@@ -313,6 +316,54 @@ function cacb_get_tool_definitions(): array {
             'properties' => $properties,
         ],
     ];
+}
+
+/**
+ * Lists every non-empty product category (hierarchy, slug, product count) for
+ * the system prompt, plus a rule to never mention product types outside it.
+ * Returns '' when there are no categories.
+ */
+function cacb_get_catalog_summary(): string {
+    $terms = get_terms( [
+        'taxonomy'   => 'product_cat',
+        'hide_empty' => true,
+        'orderby'    => 'name',
+    ] );
+    if ( is_wp_error( $terms ) || empty( $terms ) ) {
+        return '';
+    }
+
+    $by_id = [];
+    foreach ( $terms as $term ) {
+        $by_id[ $term->term_id ] = $term;
+    }
+
+    $lines = [];
+    foreach ( $terms as $term ) {
+        if ( 'uncategorized' === $term->slug ) {
+            continue;
+        }
+        // Show the parent path so "Μέλι Λήμνου" reads as part of "Προϊόντα Λήμνου"
+        $path   = [ $term->name ];
+        $parent = $term->parent;
+        while ( $parent && isset( $by_id[ $parent ] ) ) {
+            array_unshift( $path, $by_id[ $parent ]->name );
+            $parent = $by_id[ $parent ]->parent;
+        }
+        $lines[] = '- ' . implode( ' > ', $path ) . " (slug: {$term->slug}, {$term->count} προϊόντα)";
+    }
+    if ( empty( $lines ) ) {
+        return '';
+    }
+    sort( $lines );
+
+    return html_entity_decode(
+        "\n\nΚΑΤΗΓΟΡΙΕΣ ΠΡΟΪΟΝΤΩΝ ΤΟΥ ΚΑΤΑΣΤΗΜΑΤΟΣ (αυτές είναι ΟΛΕΣ):\n" . implode( "\n", $lines )
+        . "\n\nΜην αναφέρεις ΠΟΤΕ είδος προϊόντος που δεν υπάρχει σε αυτή τη λίστα ή στα αποτελέσματα του search_products. "
+        . 'Αν ο πελάτης ρωτήσει τι πουλάμε ή για κατηγορία με ασαφές περιεχόμενο (π.χ. Delicatessen), κάνε αναζήτηση με το category slug πριν απαντήσεις.',
+        ENT_QUOTES | ENT_HTML5,
+        'UTF-8'
+    );
 }
 
 // ── Execute product search tool call ─────────────────────────────────────────
@@ -533,6 +584,12 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     // Tool definitions — only when WooCommerce is active and enabled in settings
     $wc_active = function_exists( 'wc_get_products' ) && '1' === get_option( 'cacb_wc_enabled', '0' );
     $tools     = $wc_active ? cacb_get_tool_definitions() : [];
+
+    // Without a full picture of the catalogue the model answered "what else do
+    // you sell?" from general knowledge and invented product types.
+    if ( $wc_active ) {
+        $system_prompt .= cacb_get_catalog_summary();
+    }
 
     // 5. Call provider
     if ( 'claude' === $provider ) {
