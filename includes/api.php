@@ -103,10 +103,6 @@ function cacb_register_routes() {
                 'type'              => 'array',
                 'sanitize_callback' => 'cacb_sanitize_messages',
             ],
-            'nonce' => [
-                'required' => true,
-                'type'     => 'string',
-            ],
         ],
     ] );
 
@@ -415,13 +411,7 @@ function cacb_execute_search_products( array $args ): string {
 // ── Main chat handler ─────────────────────────────────────────────────────────
 function cacb_handle_chat( WP_REST_Request $request ) {
 
-    // 1. Verify nonce
-    $nonce = sanitize_text_field( $request->get_param( 'nonce' ) );
-    if ( ! wp_verify_nonce( $nonce, 'cacb_chat_nonce' ) ) {
-        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'smart-ai-chatbot' ), [ 'status' => 403 ] );
-    }
-
-    // 2. Rate limit check
+    // 1. Rate limit check (the public nonce added no real protection and broke logged-in users)
     if ( ! cacb_check_rate_limit() ) {
         return new WP_Error(
             'rate_limit',
