@@ -347,23 +347,50 @@ function cacb_execute_search_products( array $args ): string {
         $meta_query[] = [ 'key' => '_sale_price', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ];
     }
 
+    // WP_Query directly, not wc_get_products(): WooCommerce's data store drops
+    // any 'meta_query' passed to wc_get_products(), so the price, on-sale and
+    // stock-order clauses above were silently ignored.
     $query_args = [
-        'limit'      => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
-        'status'     => 'publish',
-        'meta_query' => $meta_query, // phpcs:ignore WordPress.DB.SlowDBQuery
-        'orderby'    => $orderby,
+        'post_type'           => 'product',
+        'post_status'         => 'publish',
+        'posts_per_page'      => max( 1, min( 20, (int) get_option( 'cacb_wc_limit', 8 ) ) ),
+        'fields'              => 'ids',
+        'no_found_rows'       => true,
+        'ignore_sticky_posts' => true,
+        'meta_query'          => $meta_query, // phpcs:ignore WordPress.DB.SlowDBQuery
+        'orderby'             => $orderby,
     ];
-
-    if ( ! empty( $args['category'] ) ) {
-        $query_args['category'] = [ sanitize_text_field( $args['category'] ) ];
-    }
 
     if ( ! empty( $args['keyword'] ) ) {
         $query_args['s'] = sanitize_text_field( $args['keyword'] );
     }
 
-    // ── Attribute filters via tax_query ───────────────────────────────────────
+    // ── Category + attribute filters via tax_query ────────────────────────────
     $tax_query = [];
+
+    if ( ! empty( $args['category'] ) ) {
+        $cat_slugs = [ sanitize_title( $args['category'] ) ];
+        // Shops sometimes end up with two categories of the same name (e.g. an
+        // import created a second "Κόκκινα Κρασιά"). The model only sees one
+        // slug, so include every category that shares the chosen one's name.
+        $cat = get_term_by( 'slug', $cat_slugs[0], 'product_cat' );
+        if ( $cat ) {
+            $same_name = get_terms( [
+                'taxonomy'   => 'product_cat',
+                'name'       => $cat->name,
+                'hide_empty' => false,
+                'fields'     => 'slugs',
+            ] );
+            if ( ! is_wp_error( $same_name ) && ! empty( $same_name ) ) {
+                $cat_slugs = array_values( array_unique( array_merge( $cat_slugs, $same_name ) ) );
+            }
+        }
+        $tax_query[] = [
+            'taxonomy' => 'product_cat',
+            'field'    => 'slug',
+            'terms'    => $cat_slugs,
+        ];
+    }
 
     $attr_map = [
         'year'         => 'pa_xronia',
@@ -390,11 +417,17 @@ function cacb_execute_search_products( array $args ): string {
         $query_args['tax_query'] = $tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery
     }
 
-    $products = wc_get_products( $query_args );
+    $query    = new WP_Query( $query_args );
+    $products = array_filter( array_map( 'wc_get_product', $query->posts ) );
+
+    $trace_head = 'search_products ' . wp_json_encode( $args, JSON_UNESCAPED_UNICODE );
+    if ( ! empty( $cat_slugs ) ) {
+        $trace_head .= "\nκατηγορίες: " . implode( ', ', $cat_slugs );
+    }
 
     if ( empty( $products ) ) {
         $result = 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
-        cacb_tool_trace( 'search_products ' . wp_json_encode( $args, JSON_UNESCAPED_UNICODE ) . "\n" . $result );
+        cacb_tool_trace( $trace_head . "\n" . $result );
         return $result;
     }
 
@@ -417,11 +450,11 @@ function cacb_execute_search_products( array $args ): string {
         ? 'ΔΙΑΘΕΣΙΜΑ: κανένα διαθέσιμο προϊόν με αυτά τα κριτήρια.'
         : "ΔΙΑΘΕΣΙΜΑ (πρότεινε μόνο από αυτά· για «φθηνότερο/ακριβότερο» σύγκρινε μόνο αυτά):\n" . implode( "\n", $in_stock );
     if ( ! empty( $sold_out ) ) {
-        $sections[] = "ΕΞΑΝΤΛΗΜΕΝΑ (μην τα προτείνεις και μην τα αναφέρεις, εκτός αν ο πελάτης ρώτησε για αυτό ακριβώς το προϊόν):\n" . implode( "\n", $sold_out );
+        $sections[] = "ΕΞΑΝΤΛΗΜΕΝΑ (μην τα προτείνεις. Αν ο πελάτης ρώτησε για αυτό ακριβώς το προϊόν ή τον παραγωγό του, πες ότι το έχουμε αλλά είναι προσωρινά εξαντλημένο):\n" . implode( "\n", $sold_out );
     }
     $result = implode( "\n\n", $sections );
 
-    cacb_tool_trace( 'search_products ' . wp_json_encode( $args, JSON_UNESCAPED_UNICODE ) . "\n" . $result );
+    cacb_tool_trace( $trace_head . "\n" . $result );
     return $result;
 }
 
