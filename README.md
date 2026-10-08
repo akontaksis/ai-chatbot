@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.6**
+**Version 1.4.7**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
@@ -55,9 +55,9 @@ API key από [console.anthropic.com](https://console.anthropic.com).
 
 | Model | Περιγραφή | Function Calling |
 |---|---|---|
-| `claude-sonnet-4-6` | Ισορροπία ταχύτητας/ποιότητας — **προτεινόμενο** | ✓ 1 tool per turn |
-| `claude-opus-4-7` | Κορυφαία ποιότητα, reasoning | ✓ 1 tool per turn |
-| `claude-haiku-4-5-20251001` | Γρήγορο & φθηνό | ✓ 1 tool per turn |
+| `claude-sonnet-4-6` | Ισορροπία ταχύτητας/ποιότητας — **προτεινόμενο** | ✓ Parallel tool calls |
+| `claude-opus-4-6` | Κορυφαία ποιότητα, reasoning | ✓ Parallel tool calls |
+| `claude-haiku-4-5-20251001` | Γρήγορο & φθηνό | ✓ Parallel tool calls |
 
 ```php
 define( 'CACB_CLAUDE_API_KEY', 'sk-ant-...' );
@@ -109,7 +109,7 @@ smart-ai-chatbot/
 
 | Endpoint | Method | Auth | Σκοπός |
 |---|---|---|---|
-| `/cacb/v1/chat` | POST | Nonce | Αποστολή μηνύματος → AI response |
+| `/cacb/v1/chat` | POST | Public + rate limit | Αποστολή μηνύματος → AI response |
 | `/cacb/v1/product/{id}` | GET | Public | Δεδομένα product card (όνομα, τιμή, εικόνα) |
 | `wp-admin/admin-ajax.php?action=cacb_add_to_cart` | POST | Nonce | Add to cart από chat |
 | `wp-admin/admin-ajax.php?action=cacb_refresh_nonce` | POST | Public | Refresh nonce μετά από 12-24h |
@@ -153,7 +153,8 @@ smart-ai-chatbot/
 | Tool schema | `{type: "function", function: {...}}` | `{name, description, input_schema}` |
 | Tool trigger | `finish_reason === "tool_calls"` | `stop_reason === "tool_use"` |
 | Tool result | `role: "tool"` + `tool_call_id` | `role: "user"` + `type: "tool_result"` |
-| Parallel tools | ✓ Ναι, multiple tool_calls σε ένα turn | ✗ Μόνο 1 tool per turn |
+| Parallel tools | ✓ Ναι, multiple tool_calls σε ένα turn | ✓ Ναι, multiple `tool_use` blocks σε ένα turn |
+| Tool rounds | 1 (2ο call χωρίς tools) | Έως 3 — στον τελευταίο `tool_choice: none` για να δώσει κείμενο |
 | System prompt | Μέσα στα `messages[]` | Ξεχωριστό πεδίο `system:` |
 
 ### Reliability Fixes (v1.4.6)
@@ -177,7 +178,7 @@ smart-ai-chatbot/
 1. Εξαγωγή κειμένου από κάθε σελίδα (υποστήριξη Elementor `_elementor_data`)
 2. Chunking σε **200-word chunks με 40-word overlap** (preserves context across boundaries)
 3. Γένεση embedding μέσω OpenAI `text-embedding-3-small` (1 536 διαστάσεις)
-4. Αποθήκευση στο `wp_cacb_embeddings` με content hash για change detection
+4. Αποθήκευση στο `wp_cacb_embeddings` με content hash για change detection. Το hash γράφεται στο chunk 0 **μόνο αφού αποθηκευτούν όλα τα chunks** — αν κάτι αποτύχει στη μέση, η σελίδα ξαναγίνεται index ολόκληρη στο επόμενο run
 
 ### Retrieval Pipeline
 
@@ -236,15 +237,15 @@ CREATE TABLE wp_cacb_embeddings (
 | **Encryption key derivation** | SHA-256(`AUTH_KEY` + `SECURE_AUTH_KEY`) από `wp-config.php` |
 | **Legacy compatibility** | Παλιά AES-256-CBC keys (prefix `cacb_enc:`) αποκρυπτογραφούνται και ανανεώνονται σε GCM στην επόμενη αποθήκευση |
 | **wp-config.php override** | Constants (`CACB_OPENAI_API_KEY`, `CACB_CLAUDE_API_KEY`) για keys εκτός βάσης |
-| **CSRF protection** | WP nonce verification σε κάθε REST/AJAX call |
+| **CSRF protection** | WP nonce verification στο add-to-cart και σε όλα τα admin AJAX calls. Το public chat endpoint δεν έχει nonce (θα ήταν ορατό σε κάθε επισκέπτη και έσπαγε το chat για logged-in χρήστες) — προστατεύεται από το rate limit |
 | **Rate limiting** | Per-IP (SHA-256 hashed) transients, ρυθμιζόμενο 1–200/hour |
 | **Input sanitization** | `sanitize_text_field()`, `sanitize_textarea_field()`, role whitelist (`user`/`assistant` only) |
-| **Output escaping** | `wp_kses()` με allowlist (`<br>`, `<strong>`, `<em>`, `<a>`) |
+| **Output escaping** | Το reply επιστρέφεται ως plain text και γίνεται escape στο `chat.js` πριν το render· `esc_html()` στο admin log viewer |
 | **Capability enforcement** | `current_user_can('manage_options')` για όλες τις admin ενέργειες |
 | **Enum whitelisting** | `provider`, `model`, `bubble_position` κ.λπ. validated πριν την αποθήκευση |
 | **Message length cap** | 4 000 χαρακτήρες server-side — αποτρέπει API credit drain |
 | **Privacy-first IP** | Στα logs αποθηκεύεται μόνο `hash('sha256', $ip)` — ποτέ raw IP |
-| **Cloudflare-aware IP** | `HTTP_CF_CONNECTING_IP` → `HTTP_X_FORWARDED_FOR` → `HTTP_X_REAL_IP` → `REMOTE_ADDR` |
+| **Client IP** | Μόνο `REMOTE_ADDR`. Τα proxy headers (`X-Forwarded-For`, `CF-Connecting-IP`) τα ελέγχει ο client και θα επέτρεπαν παράκαμψη του rate limit. Αν το site μπει πίσω από Cloudflare/proxy, χρειάζεται αλλαγή στο `cacb_get_client_ip()` |
 | **SSL verification** | `CURLOPT_SSL_VERIFYPEER` ενεργό σε όλα τα outbound calls |
 
 ---
@@ -338,7 +339,6 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "nonce": "abc123...",
   "messages": [
     { "role": "user", "content": "κόκκινα κρασιά κάτω από 15€" }
   ]
@@ -355,7 +355,6 @@ Content-Type: application/json
 **Errors:**
 | Code | Reason |
 |---|---|
-| 403 | Invalid nonce |
 | 429 | Rate limit exceeded |
 | 502 | Upstream AI provider error |
 
@@ -376,6 +375,36 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### v1.4.7 — Security & reliability fixes
+
+> **Μετά την αναβάθμιση:** Knowledge Base → **Καθαρισμός Index** → **Index Σελίδων**. Σελίδες που είχαν μείνει μισο-indexed πριν από αυτή την έκδοση δεν διορθώνονται αυτόματα.
+
+**Ασφάλεια** (`includes/api.php`, `includes/logs.php`)
+- Rate limit: η IP διαβάζεται μόνο από `REMOTE_ADDR`. Τα `X-Forwarded-For` / `CF-Connecting-IP` τα έστελνε ο client και με τυχαίες τιμές παρέκαμπτε το όριο
+- Αφαίρεση του nonce από το `/cacb/v1/chat`: ήταν δημόσιο (δεν προστάτευε) και έκανε το chat να αποτυγχάνει για logged-in χρήστες (REST requests χωρίς `X-WP-Nonce` τρέχουν ως user 0)
+
+**Claude function calling** (`includes/api.php`)
+- Το 2ο request δεν περιείχε `tools`, οπότε το API απέρριπτε κάθε αναζήτηση προϊόντων με Claude
+- Απάντηση σε όλα τα `tool_use` blocks (parallel searches), έως 3 γύροι αναζήτησης
+- Ένωση όλων των text blocks στην απάντηση, όχι μόνο του πρώτου
+
+**Chat output** (`includes/api.php`)
+- Το reply επιστρέφεται ως plain text. Το `wp_kses()` μετέτρεπε το `&` σε ορατό `&amp;` και έκοβε κείμενο όπως `< 15€`
+
+**RAG indexing** (`includes/embeddings.php`)
+- Διόρθωση απώλειας chunks: το `UNIQUE KEY idx_object` περιλαμβάνει πλέον το `chunk_index` (το migration αδειάζει τον index — χρειάζεται re-index)
+- `REPLACE` αντί για `INSERT` για stale rows από παλιά runs
+- Μια σελίδα σημειώνεται ως indexed μόνο όταν αποθηκευτούν όλα τα chunks· αποτυχία εγγραφής στη βάση εμφανίζεται ως σφάλμα στο admin
+- Chunking: διατήρηση ορίων λέξεων κατά το strip του HTML, αφαίρεση Elementor dynamic tags, προστασία από PCRE limits σε μεγάλες σελίδες
+
+**Knowledge Base admin** (`includes/embeddings.php`, `assets/admin.js`)
+- Λίστα ευρετηριασμένων σελίδων με πλήθος chunks, προβολή κειμένου κάθε chunk, pagination
+- Ένδειξη «stale» όταν το περιεχόμενο της σελίδας άλλαξε μετά το τελευταίο index
+
+**Λοιπά**
+- Το AI κάνει πάντα αναζήτηση πριν πει ότι ένα προϊόν δεν υπάρχει
+- Log timestamps: αποθήκευση σε UTC και μετατροπή στη ζώνη ώρας του WordPress για εμφάνιση
 
 ### v1.4.6 — Product search reliability & new filters
 
