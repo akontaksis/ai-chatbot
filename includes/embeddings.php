@@ -268,7 +268,8 @@ function cacb_product_to_text( $product, int $desc_limit = 200 ): string {
         $parts[] = $desc_limit > 0 ? wp_trim_words( $desc, $desc_limit, '' ) : $desc;
     }
 
-    return implode( ' | ', $parts );
+    // Titles and term names are stored HTML-encoded ("&amp;"); give the model plain text
+    return html_entity_decode( implode( ' | ', $parts ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

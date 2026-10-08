@@ -130,7 +130,8 @@ function cacb_rest_get_product( WP_REST_Request $request ) {
     $image_id  = $product->get_image_id();
     $image_url = $image_id ? wp_get_attachment_image_url( $image_id, 'woocommerce_thumbnail' ) : '';
     return rest_ensure_response( [
-        'name'          => $product->get_name(),
+        // WP stores "&" in titles as "&amp;"; chat.js escapes again, so send plain text
+        'name'          => html_entity_decode( $product->get_name(), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
         'price'         => wc_format_decimal( $product->get_price(), 2 ),
         'regular_price' => wc_format_decimal( $product->get_regular_price(), 2 ),
         'sale_price'    => $product->is_on_sale() ? wc_format_decimal( $product->get_sale_price(), 2 ) : '',
