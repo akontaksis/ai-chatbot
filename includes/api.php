@@ -369,26 +369,10 @@ function cacb_execute_search_products( array $args ): string {
     $tax_query = [];
 
     if ( ! empty( $args['category'] ) ) {
-        $cat_slugs = [ sanitize_title( $args['category'] ) ];
-        // Shops sometimes end up with two categories of the same name (e.g. an
-        // import created a second "Κόκκινα Κρασιά"). The model only sees one
-        // slug, so include every category that shares the chosen one's name.
-        $cat = get_term_by( 'slug', $cat_slugs[0], 'product_cat' );
-        if ( $cat ) {
-            $same_name = get_terms( [
-                'taxonomy'   => 'product_cat',
-                'name'       => $cat->name,
-                'hide_empty' => false,
-                'fields'     => 'slugs',
-            ] );
-            if ( ! is_wp_error( $same_name ) && ! empty( $same_name ) ) {
-                $cat_slugs = array_values( array_unique( array_merge( $cat_slugs, $same_name ) ) );
-            }
-        }
         $tax_query[] = [
             'taxonomy' => 'product_cat',
             'field'    => 'slug',
-            'terms'    => $cat_slugs,
+            'terms'    => [ sanitize_title( $args['category'] ) ],
         ];
     }
 
@@ -421,9 +405,6 @@ function cacb_execute_search_products( array $args ): string {
     $products = array_filter( array_map( 'wc_get_product', $query->posts ) );
 
     $trace_head = 'search_products ' . wp_json_encode( $args, JSON_UNESCAPED_UNICODE );
-    if ( ! empty( $cat_slugs ) ) {
-        $trace_head .= "\nκατηγορίες: " . implode( ', ', $cat_slugs );
-    }
 
     if ( empty( $products ) ) {
         $result = 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';

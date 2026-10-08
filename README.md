@@ -173,7 +173,6 @@ smart-ai-chatbot/
 - **Price filtering:** `meta_query` στο `_price`
 - **On-sale filter:** `meta_query` στο `_sale_price > 0` (μόνο simple products — στα variable η έκπτωση είναι στις παραλλαγές)
 - **Ταξινόμηση:** named clauses — πρώτα `_stock_status` ASC, μετά `_price` (αν ζητήθηκε) ή ημερομηνία
-- **Κατηγορία:** περιλαμβάνει και όποια άλλη κατηγορία έχει **το ίδιο όνομα** με το slug που διάλεξε το LLM (διπλές κατηγορίες από imports)
 
 ---
 
@@ -384,6 +383,10 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### Unreleased
+
+- Αφαίρεση της επέκτασης κατηγορίας σε «κατηγορίες με το ίδιο όνομα» (v1.4.10): είχε προστεθεί για διπλές κατηγορίες που τελικά δεν υπήρχαν στο κατάστημα. Η συμπεριφορά δεν αλλάζει
 
 ### v1.4.10 — Product search query fix
 
