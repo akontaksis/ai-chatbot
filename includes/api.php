@@ -140,6 +140,7 @@ function cacb_rest_get_product( WP_REST_Request $request ) {
 
 // ── Sanitize incoming messages array ─────────────────────────────────────────
 define( 'CACB_MAX_MSG_CHARS', 4000 );
+define( 'CACB_MAX_HISTORY_CHARS', 12000 );
 
 function cacb_sanitize_messages( $messages ) {
     if ( ! is_array( $messages ) ) {
@@ -440,6 +441,29 @@ function cacb_handle_chat( WP_REST_Request $request ) {
 
     if ( count( $client_messages ) > $history_limit ) {
         $client_messages = array_slice( $client_messages, - $history_limit );
+    }
+
+    // The history comes from the browser, so also cap its total size: without
+    // this one request could carry history_limit × CACB_MAX_MSG_CHARS chars.
+    // Keep the newest messages that fit; the latest one is always kept.
+    $kept  = [];
+    $chars = 0;
+    foreach ( array_reverse( $client_messages ) as $msg ) {
+        $len = mb_strlen( $msg['content'] );
+        if ( ! empty( $kept ) && $chars + $len > CACB_MAX_HISTORY_CHARS ) {
+            break;
+        }
+        $chars += $len;
+        array_unshift( $kept, $msg );
+    }
+    // Claude requires the conversation to start with a user turn
+    while ( ! empty( $kept ) && 'user' !== $kept[0]['role'] ) {
+        array_shift( $kept );
+    }
+    $client_messages = $kept;
+
+    if ( empty( $client_messages ) ) {
+        return new WP_Error( 'no_messages', __( 'Δεν υπάρχει μήνυμα.', 'smart-ai-chatbot' ), [ 'status' => 400 ] );
     }
 
     // System prompt + RAG context (pages/FAQ only — products via function calling)
