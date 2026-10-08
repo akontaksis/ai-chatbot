@@ -306,7 +306,7 @@ function cacb_get_tool_definitions(): array {
 
     return [
         'name'        => 'search_products',
-        'description' => "Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Επιστρέφει έως {$max_results} αποτελέσματα. ΥΠΟΧΡΕΩΤΙΚΟ: Κάλεσε ΠΑΝΤΑ αυτό το tool όταν ο χρήστης ρωτάει για οποιοδήποτε προϊόν (π.χ. 'έχετε πατατάκια;', 'έχετε κρασί;'), τιμές, διαθεσιμότητα ή σύσταση. ΠΟΤΕ μη λες ότι δεν διαθέτετε κάποιο προϊόν χωρίς να κάνεις πρώτα αναζήτηση με keyword. Για εύρος τιμών χρησιμοποίησε min_price και max_price μαζί (π.χ. 20-40€: min_price=20, max_price=40). Όταν ο χρήστης αναφέρει συγκεκριμένο τύπο προϊόντος, χρησιμοποίησε το κατάλληλο category slug αν υπάρχει· αλλιώς χρησιμοποίησε το keyword.",
+        'description' => "Αναζήτηση προϊόντων στο κατάστημα με φίλτρα. Επιστρέφει έως {$max_results} αποτελέσματα. ΥΠΟΧΡΕΩΤΙΚΟ: Κάλεσε ΠΑΝΤΑ αυτό το tool όταν ο χρήστης ρωτάει για οποιοδήποτε προϊόν (π.χ. 'έχετε πατατάκια;', 'έχετε κρασί;'), τιμές, διαθεσιμότητα ή σύσταση. ΠΟΤΕ μη λες ότι δεν διαθέτετε κάποιο προϊόν χωρίς να κάνεις πρώτα αναζήτηση με keyword. Για εύρος τιμών χρησιμοποίησε min_price και max_price μαζί (π.χ. 20-40€: min_price=20, max_price=40). Όταν ο χρήστης αναφέρει συγκεκριμένο τύπο προϊόντος, χρησιμοποίησε το κατάλληλο category slug αν υπάρχει· αλλιώς χρησιμοποίησε το keyword. Κάθε νέα ερώτηση είναι νέα αναζήτηση: βάλε min_price/max_price ΜΟΝΟ αν ο χρήστης αναφέρει τιμή στην τρέχουσα ερώτηση — μην κρατάς όριο τιμής από προηγούμενη ερώτηση. Για «φθηνότερο»/«ακριβότερο» χρησιμοποίησε sort_by_price χωρίς όριο τιμής.",
         'parameters'  => [
             'type'       => 'object',
             'properties' => $properties,
@@ -393,15 +393,51 @@ function cacb_execute_search_products( array $args ): string {
     $products = wc_get_products( $query_args );
 
     if ( empty( $products ) ) {
-        return 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
+        $result = 'Δεν βρέθηκαν προϊόντα με τα συγκεκριμένα κριτήρια.';
+        cacb_tool_trace( 'search_products ' . wp_json_encode( $args, JSON_UNESCAPED_UNICODE ) . "\n" . $result );
+        return $result;
     }
 
-    $lines = [];
+    // Out-of-stock products go in a separate section: in one flat list the
+    // model picked them for "cheapest"/"recommend" because it compares prices,
+    // not list positions.
+    $in_stock = [];
+    $sold_out = [];
     foreach ( $products as $product ) {
-        $lines[] = '• ' . cacb_product_to_text( $product, 150 ) . ' | ID:' . $product->get_id();
+        $line = '• ' . cacb_product_to_text( $product, 150 ) . ' | ID:' . $product->get_id();
+        if ( $product->is_in_stock() ) {
+            $in_stock[] = $line;
+        } else {
+            $sold_out[] = $line;
+        }
     }
 
-    return implode( "\n", $lines );
+    $sections = [];
+    $sections[] = empty( $in_stock )
+        ? 'ΔΙΑΘΕΣΙΜΑ: κανένα διαθέσιμο προϊόν με αυτά τα κριτήρια.'
+        : "ΔΙΑΘΕΣΙΜΑ (πρότεινε μόνο από αυτά· για «φθηνότερο/ακριβότερο» σύγκρινε μόνο αυτά):\n" . implode( "\n", $in_stock );
+    if ( ! empty( $sold_out ) ) {
+        $sections[] = "ΕΞΑΝΤΛΗΜΕΝΑ (μην τα προτείνεις και μην τα αναφέρεις, εκτός αν ο πελάτης ρώτησε για αυτό ακριβώς το προϊόν):\n" . implode( "\n", $sold_out );
+    }
+    $result = implode( "\n\n", $sections );
+
+    cacb_tool_trace( 'search_products ' . wp_json_encode( $args, JSON_UNESCAPED_UNICODE ) . "\n" . $result );
+    return $result;
+}
+
+/**
+ * Collects the product searches made during this request so they can be
+ * stored in the log next to the RAG context (debug mode only).
+ * Call with a string to record an entry; call with no argument to read all.
+ *
+ * @return string[]
+ */
+function cacb_tool_trace( ?string $entry = null ): array {
+    static $trace = [];
+    if ( null !== $entry ) {
+        $trace[] = $entry;
+    }
+    return $trace;
 }
 
 // ── Main chat handler ─────────────────────────────────────────────────────────
@@ -499,7 +535,14 @@ function cacb_handle_chat( WP_REST_Request $request ) {
     foreach ( array_reverse( $client_messages ) as $msg ) {
         if ( 'user' === $msg['role'] ) { $last_user_msg = $msg['content']; break; }
     }
-    cacb_log_exchange( $provider, $model, $last_user_msg, $result, $rag_context );
+    // In debug mode the log shows the product searches too (filters + results),
+    // so wrong answers can be traced to the exact tool call.
+    $log_context = $rag_context;
+    $trace       = cacb_tool_trace();
+    if ( ! empty( $trace ) ) {
+        $log_context .= "\n\n--- ΑΝΑΖΗΤΗΣΕΙΣ ΠΡΟΪΟΝΤΩΝ ---\n" . implode( "\n\n", $trace );
+    }
+    cacb_log_exchange( $provider, $model, $last_user_msg, $result, trim( $log_context ) );
 
     // 7. Return the reply as plain text. chat.js escapes it before rendering, so
     // running wp_kses here only double-encoded "&" into a visible "&amp;" and
