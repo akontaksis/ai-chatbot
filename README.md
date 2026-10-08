@@ -1,6 +1,6 @@
 # Smart AI Chatbot — WordPress Plugin
 
-**Version 1.4.12**
+**Version 1.4.13**
 
 AI-powered chatbot για WordPress/WooCommerce με υποστήριξη **OpenAI (GPT)** και **Anthropic (Claude)**. Production-ready με **Function Calling** για ακριβή αναζήτηση προϊόντων, **RAG (Retrieval-Augmented Generation)** για σελίδες/FAQ, **product cards** με add-to-cart, **AES-256-GCM encryption** για API keys, **rate limiting**, και πλήρη admin controls.
 
@@ -383,6 +383,11 @@ Content-Type: application/json
 ---
 
 ## Changelog
+
+### v1.4.13 — Catalogue answers & card markup
+
+- «Τι άλλο έχετε;»: η οδηγία ζητά πλέον να απαριθμούνται όλες οι σχετικές κατηγορίες πριν από τα παραδείγματα (στην 1.4.12 το AI ανέφερε μόνο ελιές από τα Delicatessen)
+- `chat.js`: το `escapeHtml` κάνει escape και τα εισαγωγικά. Ονόματα όπως `Ελιές "Nefeli"` έκοβαν το `alt` της εικόνας στην κάρτα
 
 ### v1.4.12 — No invented products, fixed rate-limit window
 

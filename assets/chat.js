@@ -78,10 +78,15 @@
     }
 
     // ── Utilities ─────────────────────────────────────────────────────────────
+    // Also escapes quotes: the result is used inside HTML attributes (alt, href),
+    // where a product name like 'Ελιές "Nefeli"' would otherwise end the attribute.
     function escapeHtml( str ) {
-        const div = document.createElement( 'div' );
-        div.appendChild( document.createTextNode( str || '' ) );
-        return div.innerHTML;
+        return String( str || '' )
+            .replace( /&/g, '&amp;' )
+            .replace( /</g, '&lt;' )
+            .replace( />/g, '&gt;' )
+            .replace( /"/g, '&quot;' )
+            .replace( /'/g, '&#39;' );
     }
 
     function scrollToBottom() {
